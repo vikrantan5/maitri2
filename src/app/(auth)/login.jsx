@@ -180,6 +180,16 @@ export default function LoginScreen() {
                 <Text style={styles.registerLink}>Register</Text>
               </TouchableOpacity>
             </View>
+
+             {/* Admin Portal Link */}
+            <TouchableOpacity
+              onPress={() => router.push('/(auth)/admin-login')}
+              style={styles.adminLinkContainer}
+              data-testid="go-to-admin-login"
+            >
+              <Text style={styles.adminLinkText}>Administrator? </Text>
+              <Text style={styles.adminLink}>Sign in here</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </LinearGradient>
@@ -302,6 +312,24 @@ const styles = StyleSheet.create({
   registerLink: {
     color: '#E91E63',
     fontSize: 14,
+    fontWeight: '700',
+  },
+    adminLinkContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#EEEEEE',
+  },
+  adminLinkText: {
+    color: '#666',
+    fontSize: 13,
+  },
+  adminLink: {
+    color: '#B8860B',
+    fontSize: 13,
     fontWeight: '700',
   },
 });

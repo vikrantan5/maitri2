@@ -71,9 +71,13 @@ export default function NotificationsScreen() {
         return null;
       }
 
-      // Query analytics_events for the current user, ordered by timestamp
+      // IMPORTANT: Only fetch notifications/events for the current user.
+      // NOTE: This query (where + orderBy on different fields) requires a
+      // Firestore composite index on (userId ASC, timestamp DESC). Firestore
+      // will print a direct URL to auto-create it the first time it runs.
       const eventsQuery = query(
         collection(db, 'analytics_events'),
+        where('userId', '==', currentUser.uid),
         orderBy('timestamp', 'desc'),
         limit(50)
       );
@@ -85,6 +89,8 @@ export default function NotificationsScreen() {
 
           snapshot.docs.forEach((doc) => {
             const data = doc.data();
+            // Extra safety: skip any doc that doesn't belong to the current user
+            if (data.userId && data.userId !== currentUser.uid) return;
             const notification = buildNotification(doc.id, data);
             if (notification) {
               allNotifications.push(notification);
@@ -107,7 +113,6 @@ export default function NotificationsScreen() {
       return null;
     }
   };
-
   const buildNotification = (id, data) => {
     const timestamp = data.timestamp?.toDate?.() || new Date();
     const isCurrentUser = data.userId === auth.currentUser?.uid;

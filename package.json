@@ -31,7 +31,10 @@
     "start": "npx expo start --web",
     "web": "npx expo start --web",
     "android": "npx expo start --android",
-    "ios": "npx expo start --ios"
+        "ios": "npx expo start --ios",
+    "tunnel": "npx expo start --tunnel",
+    "lan": "npx expo start --lan",
+    "clear": "npx expo start -c"
   },
   "dependencies": {
     "@expo-google-fonts/dev": "^0.4.7",
