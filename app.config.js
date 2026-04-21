@@ -113,6 +113,10 @@ module.exports = {
       backendUrl: process.env.BACKEND_URL,
       youtubeApiKey: process.env.YOUTUBE_API_KEY,
     },
+    updates: {
+      enabled: false
+    },
     runtimeVersion: "1.0.0"
+    
   }
 };

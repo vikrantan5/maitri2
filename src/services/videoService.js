@@ -240,11 +240,10 @@ export const getVideoById = async (videoId) => {
  * Available categories
  */
 export const VIDEO_CATEGORIES = [
-  'Programming',
-  'Web Development',
-  'DSA',
-  'Aptitude',
-  'Soft Skills',
+  'Karate',
+  'Kung fu',
+  'Self Defence',
+  
   'Women Safety',
   'General',
 ];

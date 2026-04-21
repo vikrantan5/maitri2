@@ -64,7 +64,7 @@ export default function AdminVideosScreen() {
     url: '',
     title: '',
     description: '',
-    category: 'Programming',
+    category: 'All',
   });
   const [previewVideoId, setPreviewVideoId] = useState(null);
   const [urlError, setUrlError] = useState('');
