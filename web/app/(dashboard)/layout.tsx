@@ -1,4 +1,7 @@
+"use client";
+
+import { QueryProvider } from "@/components/shared/query-provider";
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  // Phase 2 will add sidebar + role guard. For now this is a transparent shell.
-  return <>{children}</>;
+  return <QueryProvider>{children}</QueryProvider>;
 }
