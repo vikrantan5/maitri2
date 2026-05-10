@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Siren } from "lucide-react";
 import { toast } from "sonner";
 import { useEmergencyCases, useSosEvents } from "@/lib/realtime/useEmergencyCases";
@@ -8,20 +8,24 @@ import { SosCard } from "./sos-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { acceptCase, ensureCaseFromSosEvent, setCaseStatus } from "@/lib/firestore/cases";
 import type { EmergencyCase } from "@/lib/firestore/types";
+import { DispatchModal } from "./dispatch-modal";
+import { playAlarm, unlockAudioOnFirstGesture } from "@/lib/audio-alarm";
 
 export function LiveFeed({
   scope,
   by,
-  onCaseAction,
 }: {
   scope?: { stationId?: string };
   by: string;
-  onCaseAction?: (caseId: string, action: "accept" | "dispatch" | "resolve") => void;
 }) {
   const { cases, loading } = useEmergencyCases({ stationId: scope?.stationId, max: 25 });
   const { events } = useSosEvents(15);
   const seenRef = useRef<Set<string>>(new Set());
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [dispatchFor, setDispatchFor] = useState<EmergencyCase | null>(null);
+
+  useEffect(() => {
+    unlockAudioOnFirstGesture();
+  }, []);
 
   // Materialize emergencyCases from raw sos_events that haven't been promoted yet
   useEffect(() => {
@@ -41,14 +45,10 @@ export function LiveFeed({
     cases.forEach((c) => {
       if (c.status === "new" && !newIdsRef.current.has(c.id)) {
         newIdsRef.current.add(c.id);
-        toast.error("🚨 New SOS triggered", {
+        toast.error("\ud83d\udea8 New SOS triggered", {
           description: `${c.userName || "Unknown"} · ${c.location ? `${c.location.lat.toFixed(3)}, ${c.location.lng.toFixed(3)}` : "no location"}`,
         });
-        try {
-          if (!audioRef.current) audioRef.current = new Audio("/alarm.mp3");
-          audioRef.current.currentTime = 0;
-          audioRef.current.play().catch(() => {});
-        } catch {}
+        playAlarm();
       }
     });
   }, [cases]);
@@ -83,21 +83,29 @@ export function LiveFeed({
             onAccept={
               scope?.stationId
                 ? async () => {
-                    await acceptCase(c.id, scope!.stationId!, by);
-                    onCaseAction?.(c.id, "accept");
+                    try {
+                      await acceptCase(c.id, scope!.stationId!, by);
+                      toast.success("Case accepted");
+                    } catch (e: any) {
+                      toast.error("Could not accept", { description: e.message });
+                    }
                   }
                 : undefined
             }
             onDispatch={
               scope?.stationId
-                ? () => onCaseAction?.(c.id, "dispatch")
+                ? () => setDispatchFor(c)
                 : undefined
             }
             onResolve={
               scope?.stationId
                 ? async () => {
-                    await setCaseStatus(c.id, "resolved", by, "Marked resolved.");
-                    onCaseAction?.(c.id, "resolve");
+                    try {
+                      await setCaseStatus(c.id, "resolved", by, "Marked resolved.");
+                      toast.success("Resolved");
+                    } catch (e: any) {
+                      toast.error("Could not resolve", { description: e.message });
+                    }
                   }
                 : undefined
             }
@@ -105,6 +113,14 @@ export function LiveFeed({
           />
         ))}
       </div>
+
+      <DispatchModal
+        c={dispatchFor}
+        stationId={scope?.stationId}
+        by={by}
+        open={!!dispatchFor}
+        onOpenChange={(v) => !v && setDispatchFor(null)}
+      />
     </div>
   );
 }
