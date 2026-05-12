@@ -59,15 +59,18 @@ export default function LoginScreen() {
       if (!userDetails) {
         // User hasn't filled details, redirect to user details screen
         router.replace('/(auth)/user-details');
+      } else if (userDetails.role === 'police_officer') {
+        // Approved officer - go to officer dashboard
+        router.replace('/officer-dashboard');
+      } else if (userDetails.isAdmin === true) {
+        // Admin user - redirect to admin dashboard
+        router.replace('/admin-dashboard');
+      } else if (!userDetails.name || !userDetails.emergencyContacts) {
+        // Profile incomplete (e.g. officer awaiting approval, signed up via QR)
+        router.replace('/(auth)/user-details');
       } else {
-        // Check if user is admin
-        if (userDetails.isAdmin === true) {
-          // Admin user - redirect to admin dashboard
-          router.replace('/admin-dashboard');
-        } else {
-          // Regular user - go to home
-          router.replace('/(tabs)');
-        }
+        // Regular user - go to home
+        router.replace('/(tabs)');
       }
     } catch (error) {
       console.error('Login error:', error);

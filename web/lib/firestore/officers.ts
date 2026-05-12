@@ -2,9 +2,11 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -20,15 +22,15 @@ export async function listOfficersByStation(stationId: string): Promise<PoliceOf
 }
 
 export async function approveOfficerRequest(requestId: string, by: string) {
-  // Move request to officers collection
-  const docs = await getDocs(query(collection(db, REQ), where("__name__", "==", requestId)));
-  if (docs.empty) {
-    // fallback by id
-    await updateDoc(doc(db, REQ, requestId), { status: "approved", approvedBy: by, approvedAt: serverTimestamp() });
-    return;
+  // Read the request document directly by id
+  const reqRef = doc(db, REQ, requestId);
+  const reqSnap = await getDoc(reqRef);
+  if (!reqSnap.exists()) {
+    throw new Error("Officer request not found");
   }
-  const reqDoc = docs.docs[0];
-  const data = reqDoc.data() as PoliceOfficer;
+  const data = reqSnap.data() as PoliceOfficer & { uid?: string };
+
+  // 1) Create the canonical officer record
   await addDoc(collection(db, COL), {
     ...data,
     status: "approved",
@@ -36,11 +38,28 @@ export async function approveOfficerRequest(requestId: string, by: string) {
     approvedAt: serverTimestamp(),
     createdAt: serverTimestamp(),
   });
-  await updateDoc(doc(db, REQ, requestId), {
+
+  // 2) Mark request approved
+  await updateDoc(reqRef, {
     status: "approved",
     approvedBy: by,
     approvedAt: serverTimestamp(),
   });
+
+  // 3) Mirror role + stationId onto users/{uid} so the mobile app can detect
+  //    "this is an officer" on next login (no Cloud Function required).
+  if (data.uid) {
+    await setDoc(
+      doc(db, "users", data.uid),
+      {
+        role: "police_officer",
+        stationId: data.stationId,
+        badgeNumber: data.badgeNumber,
+        officerApprovedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+  }
 }
 
 export async function rejectOfficerRequest(requestId: string, by: string, reason?: string) {

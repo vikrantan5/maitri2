@@ -36,13 +36,19 @@ function RootLayoutNav() {
   const sosTriggering = useRef(false);
   const TRIPLE_CLICK_WINDOW = 3000; // 3 seconds window for triple-click
 
-  // Function to check user details
+  // Function to check user details.
+  // Returns one of: 'officer' (officer with approved role), true (regular user w/ profile), or false (incomplete).
   const checkUserDetails = async (currentUser) => {
     if (currentUser) {
       try {
         console.log('Checking user details for uid:', currentUser.uid);
         const userDetails = await getUserDetails(currentUser.uid);
-        const hasDetails = !!userDetails;
+        if (userDetails?.role === 'police_officer') {
+          console.log('User is an approved police_officer');
+          setHasUserDetails('officer');
+          return 'officer';
+        }
+        const hasDetails = !!(userDetails && userDetails.name && userDetails.emergencyContacts);
         console.log('User has details:', hasDetails);
         setHasUserDetails(hasDetails);
         return hasDetails;
@@ -186,13 +192,21 @@ function RootLayoutNav() {
     
     console.log('Navigation check - User:', !!user, 'HasDetails:', hasUserDetails, 'Segments:', segments);
 
+    // Officer detection: officers have role === 'police_officer' in their users/{uid} doc.
+    // They skip the user-details flow entirely and land on /officer-dashboard.
+    const isOfficer = hasUserDetails === 'officer';
+    const onOfficerRoute = segments[0] === 'officer-dashboard' || segments[0] === 'officer-case';
+
     if (!user && !inAuthGroup) {
       console.log('→ Redirecting to login (no user)');
       router.replace('/(auth)/login');
-    } else if (user && !hasUserDetails && segments[1] !== 'user-details') {
+    } else if (user && isOfficer && !onOfficerRoute) {
+      console.log('→ Redirecting to officer dashboard');
+      router.replace('/officer-dashboard');
+    } else if (user && !isOfficer && !hasUserDetails && segments[1] !== 'user-details') {
       console.log('→ Redirecting to user-details (no profile)');
       router.replace('/(auth)/user-details');
-    } else if (user && hasUserDetails && inAuthGroup) {
+    } else if (user && hasUserDetails && !isOfficer && inAuthGroup) {
       console.log('→ Redirecting to dashboard (profile complete)');
       router.replace('/(tabs)');
     }
@@ -219,6 +233,8 @@ function RootLayoutNav() {
        <Stack.Screen name="teams" />
       <Stack.Screen name="video-player" />
         <Stack.Screen name="notifications" />
+              <Stack.Screen name="officer-dashboard" />
+      <Stack.Screen name="officer-case/[id]" />
     </Stack>
   );
 }
