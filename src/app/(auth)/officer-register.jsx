@@ -87,7 +87,7 @@ export default function OfficerRegisterScreen() {
         return;
       }
       const data_ = stationSnap.data();
-      if (data_.status && data_.status !== 'approved') {
+    if (data_.status !== 'approved') {
         Alert.alert('Station inactive', `Station status: ${data_.status}. Cannot onboard officers.`);
         scanLockRef.current = false;
         return;
@@ -106,9 +106,9 @@ export default function OfficerRegisterScreen() {
     if (!form.name.trim()) e.name = 'Full name is required';
     if (!form.badgeNumber.trim()) e.badgeNumber = 'Badge number is required';
     if (!form.phone.trim()) e.phone = 'Phone is required';
-    else if (form.phone.replace(/D/g, '').length < 10) e.phone = 'Enter at least 10 digits';
+    else if (form.phone.replace(/\D/g, '').length < 10) e.phone = 'Enter at least 10 digits';
     if (!form.email.trim()) e.email = 'Email is required';
-    else if (!/S+@S+.S+/.test(form.email)) e.email = 'Invalid email';
+    else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Invalid email';
     if (!form.password) e.password = 'Password is required';
     else if (form.password.length < 6) e.password = 'At least 6 characters';
     setErrors(e);
@@ -144,7 +144,7 @@ export default function OfficerRegisterScreen() {
         name: form.name.trim(),
         badgeNumber: form.badgeNumber.trim(),
         rank: form.rank.trim() || 'Officer',
-        phone: form.phone.replace(/D/g, ''),
+               phone: form.phone.replace(/\D/g, ''),
         email: form.email.trim(),
         status: 'pending',
         createdAt: serverTimestamp(),

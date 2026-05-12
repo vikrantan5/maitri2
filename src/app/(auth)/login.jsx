@@ -16,7 +16,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../config/firebaseConfig';
 import { getUserDetails } from '../../services/userService';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Shield, Mail, Lock } from 'lucide-react-native';
+import { Shield, Mail, Lock, BadgeCheck } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function LoginScreen() {
@@ -184,6 +184,17 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
+                         {/* Police Officer QR Onboarding */}
+            <TouchableOpacity
+              onPress={() => router.push('/(auth)/officer-register')}
+              style={styles.officerBtn}
+              data-testid="go-to-officer-register"
+              activeOpacity={0.85}
+            >
+              <BadgeCheck size={18} color="#FFFFFF" strokeWidth={2.2} />
+              <Text style={styles.officerBtnText}>Register as Police Officer</Text>
+            </TouchableOpacity>
+
              {/* Admin Portal Link */}
             <TouchableOpacity
               onPress={() => router.push('/(auth)/admin-login')}
@@ -334,5 +345,28 @@ const styles = StyleSheet.create({
     color: '#B8860B',
     fontSize: 13,
     fontWeight: '700',
+  },
+   officerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F1226',
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(0,229,255,0.45)',
+    shadowColor: '#00E5FF',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  officerBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 10,
+    letterSpacing: 0.4,
   },
 });

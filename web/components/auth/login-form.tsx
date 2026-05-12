@@ -196,6 +196,20 @@ export default function LoginForm() {
                 Register your station
               </a>
             </p>
+            
+            <div className="mt-3 rounded-xl border border-cyan/20 bg-cyan/[0.04] p-3">
+              <div className="flex items-start gap-2">
+                <div className="mt-0.5 h-5 w-5 rounded-full border border-cyan/40 bg-cyan/15 text-center text-[10px] font-bold leading-5 text-cyan">
+                  i
+                </div>
+                <div className="text-[11px] leading-relaxed text-white/55">
+                  <span className="font-semibold text-white/80">Police Officer?</span>{" "}
+                  Download the <b className="text-cyan">Saheli mobile app</b> and tap{" "}
+                  <b className="text-white/80">&quot;Register as Police Officer&quot;</b> on the login screen.
+                  Scan your station&apos;s QR code to onboard. Approval is granted by your Station OIC.
+                </div>
+              </div>
+            </div>
           </form>
         </CardContent>
       </Card>
