@@ -119,11 +119,24 @@ export default function OfficerRegisterScreen() {
     if (!validate()) return;
     setSubmitting(true);
     try {
+      console.log('[officer-onboard] creating auth user…');
       // 1) Create Firebase Auth account for the officer
       const cred = await createUserWithEmailAndPassword(auth, form.email.trim(), form.password);
       const uid = cred.user.uid;
+      console.log('[officer-onboard] auth user created', uid);
+
+      // IMPORTANT: Force a fresh ID token so Firestore rules see request.auth
+      // before we attempt the writes below. Without this, the very first
+      // Firestore write can race the SDK's auth-state propagation and fail
+      // with \"Missing or insufficient permissions\".
+      try {
+        await cred.user.getIdToken(true);
+      } catch (tokErr) {
+        console.warn('[officer-onboard] getIdToken(true) failed (continuing)', tokErr);
+      }
 
       // 2) Mirror minimal profile in /users so security rules can identify the user later
+      console.log('[officer-onboard] writing users/' + uid);
       await setDoc(
         doc(db, 'users', uid),
         {
@@ -137,6 +150,7 @@ export default function OfficerRegisterScreen() {
       );
 
       // 3) Submit officer onboarding request
+      console.log('[officer-onboard] writing officerRequests for station', stationId);
       const ref = await addDoc(collection(db, 'officerRequests'), {
         uid,
         stationId,
@@ -144,20 +158,24 @@ export default function OfficerRegisterScreen() {
         name: form.name.trim(),
         badgeNumber: form.badgeNumber.trim(),
         rank: form.rank.trim() || 'Officer',
-               phone: form.phone.replace(/\D/g, ''),
+        phone: form.phone.replace(/\D/g, ''),
         email: form.email.trim(),
         status: 'pending',
         createdAt: serverTimestamp(),
       });
+      console.log('[officer-onboard] officerRequest created', ref.id);
 
       setRequestId(ref.id);
       setStage('done');
     } catch (e) {
+      console.error('[officer-onboard] submission failed', e?.code, e?.message);
       let msg = e?.message || 'Submission failed';
       if (e?.code === 'auth/email-already-in-use') {
         msg = 'This email already has a Saheli account. Use a different email or contact your station OIC.';
       } else if (e?.code === 'auth/weak-password') {
         msg = 'Password is too weak — use at least 6 characters.';
+         } else if (e?.code === 'permission-denied' || /permission/i.test(String(e?.message || ''))) {
+        msg = 'Firebase rejected the request (permission-denied). Make sure Firestore rules allow officerRequests creation and that you completed the QR scan first.';
       }
       Alert.alert('Could not submit', msg);
     } finally {

@@ -35,32 +35,68 @@ export default function CasesMap({ cases }: { cases: EmergencyCase[] }) {
     const L = LRef.current;
     const m = mapInstanceRef.current;
     if (!L || !m) return;
+    
+    // Clear existing layer group
     if (layerRef.current) {
-      m.removeLayer(layerRef.current);
+      layerRef.current.clearLayers();
+    } else {
+      layerRef.current = L.layerGroup().addTo(m);
     }
-    const group = L.layerGroup();
+    
     const points: [number, number][] = [];
     cases.forEach((c) => {
       if (!c.location) return;
-      const color = c.status === "new" ? "#ff3b3b" : c.status === "acknowledged" ? "#ffb020" : c.status === "resolved" ? "#22e08c" : "#00e5ff";
+      
+      // Marker color spec (problem statement):
+      //   new        → red
+      //   acknowledged → amber
+      //   dispatched → amber
+      //   in_progress → cyan
+      //   resolved   → green
+      //   escalated  → purple
+      const color =
+        c.status === "new"
+          ? "#ff3b3b"
+          : c.status === "acknowledged" || c.status === "dispatched"
+          ? "#ffb020"
+          : c.status === "resolved"
+          ? "#22e08c"
+          : c.status === "escalated"
+          ? "#a855f7"
+          : "#00e5ff";
+      
+      const popupParts = [
+        `<div style="font-family:system-ui;color:#0c1220;min-width:200px">`,
+        `<b>${c.userName || "Unknown"}</b><br/>`,
+        `<span style="font-size:11px">${c.status} · ${c.priority || "high"}</span><br/>`,
+        c.imageUrl
+          ? `<a href="${c.imageUrl}" target="_blank" style="font-size:11px;color:#0066cc;text-decoration:underline">View photo</a><br/>`
+          : "",
+        c.audioUrl
+          ? `<a href="${c.audioUrl}" target="_blank" style="font-size:11px;color:#0066cc;text-decoration:underline">Listen to audio</a><br/>`
+          : "",
+        `<span style="font-size:10px;color:#666">${(c.createdAt as any)?.toDate?.().toLocaleString() || ""}</span>`,
+        `</div>`,
+      ].join("");
+      
       const marker = L.circleMarker([c.location.lat, c.location.lng], {
         radius: c.status === "new" ? 12 : 8,
-        color,
+        color: color,
         fillColor: color,
         fillOpacity: 0.55,
         weight: 2,
-      }).bindPopup(
-        `<div style="font-family:system-ui;color:#0c1220;min-width:180px"><b>${c.userName || "Unknown"}</b><br/><span style="font-size:11px">${c.status} · ${c.priority || "high"}</span></div>`,
-      );
-      group.addLayer(marker);
+      }).bindPopup(popupParts);
+      
+      layerRef.current.addLayer(marker);
       points.push([c.location.lat, c.location.lng]);
     });
-    group.addTo(m);
-    layerRef.current = group;
+    
     if (points.length) {
       try {
         m.fitBounds(points as any, { padding: [40, 40], maxZoom: 12 });
-      } catch {}
+      } catch (error) {
+        console.error("Error fitting bounds:", error);
+      }
     }
   }, [cases]);
 

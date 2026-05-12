@@ -22,15 +22,30 @@ export async function ensureCaseFromSosEvent(eventId: string, raw: Record<string
   const snap = await getDocs(q);
   if (!snap.empty) return snap.docs[0].id;
 
-  const lat = raw.latitude ?? raw.location?.lat;
-  const lng = raw.longitude ?? raw.location?.lng;
+  // The mobile app writes sos_events with a nested object:
+  //   location: { latitude, longitude, timestamp }
+  // Earlier schemas used flat latitude/longitude. Support both, and also the
+  // canonical { lat, lng } shape if anyone wrote it directly.
+  const lat =
+    raw?.location?.lat ??
+    raw?.location?.latitude ??
+    raw?.latitude ??
+    null;
+  const lng =
+    raw?.location?.lng ??
+    raw?.location?.longitude ??
+    raw?.longitude ??
+    null;
 
-  const data = {
+  const data: Record<string, any> = {
     sourceEventId: eventId,
     userId: raw.user_id || raw.userId || "unknown",
     userName: raw.user_name || raw.userName || "Unknown",
     userPhone: raw.userPhone || raw.user_phone || "",
-    location: lat && lng ? { lat: Number(lat), lng: Number(lng) } : null,
+    location:
+      lat != null && lng != null
+        ? { lat: Number(lat), lng: Number(lng) }
+        : null,
     imageUrl: raw.image_url || raw.imageUrl || "",
     audioUrl: raw.audio_url || raw.audioUrl || "",
     status: "new" as CaseStatus,
@@ -40,6 +55,12 @@ export async function ensureCaseFromSosEvent(eventId: string, raw: Record<string
     notes: [],
     createdAt: serverTimestamp(),
   };
+
+  console.log("[ensureCaseFromSosEvent] promoting sos_event", eventId, {
+    hasLocation: !!data.location,
+    hasImage: !!data.imageUrl,
+    hasAudio: !!data.audioUrl,
+  });
 
   const created = await addDoc(collection(db, COL), data);
   return created.id;
