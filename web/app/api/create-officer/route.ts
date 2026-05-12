@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "requestId required" }, { status: 400 });
     }
 
-    const idToken = req.headers.get("authorization")?.replace(/^Bearers+/i, "");
+    const idToken = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     if (!idToken) {
       return NextResponse.json({ error: "Authorization required" }, { status: 401 });
     }
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
     // Send email if officer provided one (skip our generated @saheli.local fallback)
     let emailSent = false;
     let emailError: string | undefined;
-    if (data.email && /^[^@]+@[^@]+.[^@]+$/.test(data.email)) {
+    if (data.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
       const loginUrl = new URL("/login", req.nextUrl.origin).toString();
       const m = await sendMail({
         to: officerEmail,

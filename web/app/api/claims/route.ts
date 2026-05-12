@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: NextRequest) {
   try {
-    const idToken = req.headers.get("authorization")?.replace(/^Bearers+/i, "");
+     const idToken = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     if (!idToken) {
       return NextResponse.json({ error: "Authorization required" }, { status: 401 });
     }
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    const idToken = req.headers.get("authorization")?.replace(/^Bearers+/i, "");
+   const idToken = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     if (!idToken) return NextResponse.json({ error: "Authorization required" }, { status: 401 });
     const decoded = await adminAuth.verifyIdToken(idToken).catch(() => null);
     if (!decoded) return NextResponse.json({ error: "Invalid token" }, { status: 401 });

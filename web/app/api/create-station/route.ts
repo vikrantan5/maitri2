@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify the caller has super_admin claim
-    const idToken = req.headers.get("authorization")?.replace(/^Bearers+/i, "");
+        const idToken = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     if (!idToken) {
       return NextResponse.json({ error: "Authorization required" }, { status: 401 });
     }

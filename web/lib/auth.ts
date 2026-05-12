@@ -89,9 +89,10 @@ export async function fetchUserRole(uid: string, email: string | null): Promise<
 
 async function bootstrapSuperAdmin(email: string) {
   // Idempotent — seed runs server-side and only acts when the admin
-  // doesn't yet exist or its claim is missing. Fires only for the configured email.
+  // doesn't yet exist or its claim is missing. Fires for the configured admin email.
   try {
-    if (email.toLowerCase() !== "admin@saheli.com") return;
+    const configured = (process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL || "admin@saheli.com").toLowerCase();
+    if (email.toLowerCase() !== configured && email.toLowerCase() !== "admin@saheli.com") return;
     await fetch("/api/seed-admin", { method: "POST" });
   } catch (e) {
     console.warn("[auth] seed-admin fetch failed", e);
