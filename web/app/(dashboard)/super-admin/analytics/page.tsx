@@ -41,7 +41,7 @@ export default function AnalyticsPage() {
     (async () => {
       try {
         const sumSnap = await getDocs(query(collection(db, "analytics_summary")));
-        const rows: SummaryRow[] = sumSnap.docs.map((d) => ({ date: d.id, ...(d.data() as SummaryRow) }));
+                const rows: SummaryRow[] = sumSnap.docs.map((d) => ({ ...(d.data() as SummaryRow), date: d.id }));
         rows.sort((a, b) => a.date.localeCompare(b.date));
         setSummaries(rows.slice(-14));
 

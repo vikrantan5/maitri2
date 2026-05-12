@@ -1,0 +1,166 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* ============================================================
+       Saheli Firestore Security Rules
+       Merge with your existing rules. Adds support for the web
+       dashboard: policeStations, policeOfficers, emergencyCases,
+       stationRequests, officerRequests, activityLogs.
+       ============================================================ */
+
+    function isSignedIn() { return request.auth != null; }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function role() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? userDoc().data.role
+        : null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        // Either explicit role
+        role() == 'super_admin'
+        // Or the legacy isAdmin flag used by the mobile app
+        || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && userDoc().data.isAdmin == true)
+      );
+    }
+
+    function isStation() { return isSignedIn() && role() == 'police_station'; }
+    function isOfficer() { return isSignedIn() && role() == 'police_officer'; }
+
+    function myStation() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? userDoc().data.stationId
+        : null;
+    }
+
+    /* ------------- existing collections (kept compatible) ------------- */
+
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == uid;
+      allow update: if (isSignedIn() && request.auth.uid == uid &&
+                       !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin','role','stationId']))
+                       || isAdmin();
+      allow delete: if false;
+    }
+
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /carts/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if false;
+    }
+
+    match /community_posts/{postId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /safety_markers/{markerId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /safety_alerts/{alertId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /safetyVideos/{videoId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /educational_videos/{videoId} {
+      allow read: if isSignedIn() && resource.data.published == true;
+      allow read, write: if isAdmin();
+    }
+
+    match /analytics_events/{eventId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /analytics_summary/{summaryId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if false;
+    }
+
+    /* ------------- new: dashboard collections ------------- */
+
+    // Police Stations directory (created on approval)
+    match /policeStations/{stationId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Station registration queue (public can submit)
+    match /stationRequests/{requestId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // Police Officers (managed by station + admin)
+    match /policeOfficers/{officerId} {
+      allow read: if isSignedIn() && (
+        isAdmin()
+        || (isStation() && resource.data.stationId == myStation())
+        || resource.data.uid == request.auth.uid
+      );
+      allow create, update: if isAdmin() || (isStation() && request.resource.data.stationId == myStation());
+      allow delete: if isAdmin();
+    }
+
+    // Officer onboarding queue (public can submit via mobile QR scan)
+    match /officerRequests/{requestId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin() || (isStation() && resource.data.stationId == myStation());
+    }
+
+    // Emergency cases (created from sos_events trigger / mobile)
+    match /emergencyCases/{caseId} {
+      allow read: if isSignedIn() && (
+        isAdmin()
+        || (isStation() && (resource.data.assignedStationId == myStation() || resource.data.assignedStationId == null))
+        || (isOfficer() && request.auth.uid in resource.data.assignedOfficers)
+      );
+      allow create: if true; // mobile/clients can write
+      allow update: if isAdmin() || isStation() || isOfficer();
+      allow delete: if isAdmin();
+    }
+
+    // Legacy sos_events written by mobile app — readable to admins/stations/officers
+    match /sos_events/{id} {
+      allow read: if isSignedIn() && (isAdmin() || isStation() || isOfficer());
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    // Audit log
+    match /activityLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+    }
+  }
+}

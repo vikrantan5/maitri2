@@ -6,6 +6,7 @@ import {
   getDocs,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -30,15 +31,12 @@ export async function approveStationRequest(requestId: string, approvedBy: strin
   if (!snap.exists()) throw new Error("Request not found");
   const data = snap.data() as PoliceStation;
 
-  // Generate station ID slug
+  // Generate station ID slug e.g. MH-MUM-9X3KL
   const stationId =
     `${(data.state || "IN").slice(0, 2).toUpperCase()}-${(data.district || "STN").slice(0, 3).toUpperCase()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
-  // Create station doc
-  const stationRef = doc(db, COL, stationId);
-  await updateDoc(reqRef, { status: "approved", approvedBy, approvedAt: serverTimestamp(), stationId });
-  // Use setDoc-like via updateDoc on a freshly created doc:
-  await addDoc(collection(db, COL), {
+  // Use setDoc so the document id is the stationId (deterministic, joinable)
+  await setDoc(doc(db, COL, stationId), {
     ...data,
     stationId,
     status: "approved",
@@ -47,6 +45,14 @@ export async function approveStationRequest(requestId: string, approvedBy: strin
     online: false,
     qrCodeUrl: `${typeof window !== "undefined" ? window.location.origin : ""}/api/station-qr/${stationId}`,
   });
+
+  await updateDoc(reqRef, {
+    status: "approved",
+    approvedBy,
+    approvedAt: serverTimestamp(),
+    stationId,
+  });
+
   return stationId;
 }
 
