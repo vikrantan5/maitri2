@@ -19,6 +19,8 @@ import {
   ShieldCheck,
   Upload,
   X,
+  Image as ImageIcon,
+  FileType2,
 } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,8 +31,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { submitStationRequest } from "@/lib/firestore/stations";
 import { uploadToCloudinary } from "@/lib/cloudinary";
-
-/* ---------------------------- Schemas ---------------------------- */
 
 const step1 = z.object({
   name: z.string().min(3, "Station name is required"),
@@ -51,22 +51,41 @@ const step2 = z.object({
 type Step1Values = z.infer<typeof step1>;
 type Step2Values = z.infer<typeof step2>;
 
-interface UploadedDoc {
-  name: string;
+export interface StationDoc {
+  name: string;        // category name
+  fileName: string;
   url: string;
+  publicId?: string;
+  resourceType?: "image" | "raw" | "video";
+  uploadedAt: string;
 }
 
-/* ---------------------------- Page ---------------------------- */
+const REQUIRED_DOC_TYPES = [
+  { key: "Government Registration Proof", desc: "Govt-issued station registration / gazette." },
+  { key: "Police Authorization Document", desc: "Authorization letter signed by department." },
+  { key: "Officer ID Proof", desc: "Officer-in-charge ID card (front + back if applicable)." },
+  { key: "Address Verification", desc: "Utility bill / lease / municipality document." },
+];
+
+const ACCEPT = "image/png,image/jpeg,image/jpg,application/pdf";
+
+function genTempId() {
+  return `req-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export default function RegisterStationPage() {
   const router = useRouter();
   const [stage, setStage] = useState<1 | 2 | 3 | 4>(1);
   const [s1, setS1] = useState<Step1Values | null>(null);
   const [s2, setS2] = useState<Step2Values | null>(null);
-  const [docs, setDocs] = useState<UploadedDoc[]>([]);
-  const [uploading, setUploading] = useState(false);
+  // Map docTypeKey → uploaded document
+  const [docs, setDocs] = useState<Record<string, StationDoc>>({});
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submittedId, setSubmittedId] = useState<string | null>(null);
+  // Local request id used as folder name in Cloudinary so files stay grouped
+  const [requestUploadId] = useState(genTempId);
 
   const form1 = useForm<Step1Values>({
     resolver: zodResolver(step1),
@@ -87,23 +106,42 @@ export default function RegisterStationPage() {
     setStage(3);
   };
 
-  const onFile = async (file: File) => {
-    setUploading(true);
-    try {
-      const { url } = await uploadToCloudinary(file, "stations/docs");
-      setDocs((d) => [...d, { name: file.name, url }]);
-      toast.success(`${file.name} uploaded`);
-    } catch (e: any) {
-      toast.error("Upload failed", { description: e.message });
-    } finally {
-      setUploading(false);
+  const handleUpload = async (docKey: string, file: File) => {
+    if (!ACCEPT.split(",").includes(file.type)) {
+      toast.error("Unsupported file type", { description: "PDF / JPG / PNG only." });
+      return;
     }
-  };
-
-  const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    files.forEach(onFile);
-    e.target.value = "";
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File too large", { description: "Max 10MB per file." });
+      return;
+    }
+    setUploadingKey(docKey);
+    setUploadProgress((p) => ({ ...p, [docKey]: 0 }));
+    try {
+      const folder = `stations/documents/${requestUploadId}`;
+      const { url, public_id } = await uploadToCloudinary(file, folder, (pct) =>
+        setUploadProgress((p) => ({ ...p, [docKey]: pct })),
+      );
+      const resourceType: StationDoc["resourceType"] = file.type === "application/pdf" ? "raw" : "image";
+      setDocs((d) => ({
+        ...d,
+        [docKey]: {
+          name: docKey,
+          fileName: file.name,
+          url,
+          publicId: public_id,
+          resourceType,
+          uploadedAt: new Date().toISOString(),
+        },
+      }));
+      toast.success(`${docKey} uploaded`);
+      console.log("[register-station] uploaded", docKey, public_id);
+    } catch (e: unknown) {
+      toast.error("Upload failed", { description: (e as Error)?.message || "Cloudinary error" });
+      console.error("[register-station] upload failed", e);
+    } finally {
+      setUploadingKey(null);
+    }
   };
 
   const onUseCurrentLocation = () => {
@@ -124,6 +162,11 @@ export default function RegisterStationPage() {
 
   const onSubmitAll = async () => {
     if (!s1 || !s2) return;
+    const missing = REQUIRED_DOC_TYPES.filter((d) => !docs[d.key]).map((d) => d.key);
+    if (missing.length > 0) {
+      toast.error("Missing documents", { description: `Required: ${missing.join(", ")}` });
+      return;
+    }
     setSubmitting(true);
     try {
       const id = await submitStationRequest({
@@ -136,15 +179,15 @@ export default function RegisterStationPage() {
         state: s2.state,
         geo: { lat: s2.lat, lng: s2.lng },
         govtVerificationId: s1.govtVerificationId,
-        documents: docs,
+        documents: Object.values(docs),
       });
       setSubmittedId(id);
       setStage(4);
       toast.success("Registration submitted", {
         description: "Your station request is now pending super-admin approval.",
       });
-    } catch (e: any) {
-      toast.error("Submission failed", { description: e.message });
+    } catch (e: unknown) {
+      toast.error("Submission failed", { description: (e as Error)?.message });
     } finally {
       setSubmitting(false);
     }
@@ -165,7 +208,8 @@ export default function RegisterStationPage() {
           </div>
           <CardTitle>Register your station with Saheli</CardTitle>
           <CardDescription>
-            All requests are reviewed by Saheli operations. Approved stations get a unique Station ID and an officer-onboarding QR code.
+            All requests are reviewed by Saheli operations. Approved stations receive a Station ID,
+            login credentials and an officer-onboarding QR code by email.
           </CardDescription>
 
           <Stepper stage={stage} />
@@ -329,65 +373,107 @@ export default function RegisterStationPage() {
                 className="space-y-5"
                 data-testid="register-station-step-3"
               >
-                <Section title="Supporting documents" icon={FileText}>
+                <Section title="Verification documents" icon={FileText}>
                   <p className="text-xs text-white/50">
-                    Upload PDFs or images of station registration certificate, OIC ID card and any government-issued
-                    proof. Uploaded to Cloudinary, accessible only to operations.
+                    Upload <b>all four</b> documents below. Accepted formats: PDF, JPG, JPEG, PNG (max 10MB each).
+                    Files are stored securely on Cloudinary and accessible only to operations.
                   </p>
 
-                  <label
-                    className={`flex h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/10 bg-white/[0.02] transition-colors hover:border-cyan/40 hover:bg-cyan/[0.04] ${uploading ? "pointer-events-none opacity-50" : ""}`}
-                    data-testid="rs-doc-dropzone"
-                  >
-                    {uploading ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-cyan" />
-                    ) : (
-                      <Upload className="h-5 w-5 text-white/40" />
-                    )}
-                    <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-white/50">
-                      {uploading ? "Uploading…" : "Click to upload documents"}
-                    </span>
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*,application/pdf"
-                      className="hidden"
-                      onChange={handleFilePick}
-                      data-testid="rs-doc-input"
-                    />
-                  </label>
-
-                  {docs.length > 0 && (
-                    <div className="space-y-2">
-                      {docs.map((d, i) => (
+                  <div className="space-y-3">
+                    {REQUIRED_DOC_TYPES.map((d) => {
+                      const doc = docs[d.key];
+                      const isUploading = uploadingKey === d.key;
+                      const progress = uploadProgress[d.key] ?? 0;
+                      return (
                         <div
-                          key={i}
-                          className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-white/[0.02] px-4 py-2"
-                          data-testid={`rs-doc-${i}`}
+                          key={d.key}
+                          className="rounded-xl border border-[var(--border)] bg-white/[0.02] p-3"
+                          data-testid={`rs-doc-block-${d.key.replace(/s+/g, "-").toLowerCase()}`}
                         >
-                          <div className="flex min-w-0 items-center gap-2">
-                            <FileText className="h-4 w-4 shrink-0 text-cyan" />
-                            <a
-                              href={d.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="truncate text-sm text-white hover:text-cyan"
-                            >
-                              {d.name}
-                            </a>
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-white">{d.key}</span>
+                                <Badge variant="danger">Required</Badge>
+                                {doc && <Badge variant="ok">Uploaded</Badge>}
+                              </div>
+                              <div className="mt-1 text-[11px] text-white/40">{d.desc}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {doc && (
+                                <>
+                                  <a
+                                    href={doc.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="rounded border border-[var(--border)] bg-white/[0.03] px-2 py-1 text-[11px] text-cyan hover:bg-white/[0.06]"
+                                    data-testid={`rs-doc-preview-${d.key.replace(/s+/g, "-").toLowerCase()}`}
+                                  >
+                                    Preview
+                                  </a>
+                                  <button
+                                    onClick={() =>
+                                      setDocs((arr) => {
+                                        const c = { ...arr };
+                                        delete c[d.key];
+                                        return c;
+                                      })
+                                    }
+                                    className="rounded p-1 text-white/40 hover:bg-white/5 hover:text-danger"
+                                    data-testid={`rs-doc-remove-${d.key.replace(/s+/g, "-").toLowerCase()}`}
+                                    aria-label="Remove document"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </>
+                              )}
+                              {!doc && (
+                                <label
+                                  className={`inline-flex cursor-pointer items-center gap-1 rounded border border-cyan/30 bg-cyan/10 px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-cyan transition-colors hover:bg-cyan/20 ${isUploading ? "pointer-events-none opacity-60" : ""}`}
+                                  data-testid={`rs-doc-upload-${d.key.replace(/s+/g, "-").toLowerCase()}`}
+                                >
+                                  {isUploading ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Upload className="h-3.5 w-3.5" />
+                                  )}
+                                  {isUploading ? `${progress}%` : "Upload"}
+                                  <input
+                                    type="file"
+                                    accept={ACCEPT}
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) handleUpload(d.key, file);
+                                      e.target.value = "";
+                                    }}
+                                  />
+                                </label>
+                              )}
+                            </div>
                           </div>
-                          <button
-                            onClick={() => setDocs((arr) => arr.filter((_, j) => j !== i))}
-                            className="rounded p-1 text-white/40 hover:bg-white/5 hover:text-danger"
-                            data-testid={`rs-doc-remove-${i}`}
-                            aria-label="Remove document"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
+                          {doc && (
+                            <div className="mt-2 flex items-center gap-2 text-[11px] text-white/50">
+                              {doc.resourceType === "raw" ? (
+                                <FileType2 className="h-3.5 w-3.5 text-pink" />
+                              ) : (
+                                <ImageIcon className="h-3.5 w-3.5 text-cyan" />
+                              )}
+                              <span className="truncate">{doc.fileName}</span>
+                            </div>
+                          )}
+                          {isUploading && (
+                            <div className="mt-2 h-1 overflow-hidden rounded bg-white/5">
+                              <div
+                                className="h-full bg-cyan transition-all"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                 </Section>
 
                 <Section title="Review" icon={ShieldCheck}>
@@ -404,11 +490,9 @@ export default function RegisterStationPage() {
                     <Row k="Geo" v={`${s2?.lat}, ${s2?.lng}`} />
                   </ReviewBlock>
                   <ReviewBlock title="Documents">
-                    {docs.length === 0 ? (
-                      <div className="text-xs text-white/40">No documents attached.</div>
-                    ) : (
-                      <div className="text-xs text-white/70">{docs.length} file(s) attached.</div>
-                    )}
+                    <div className="text-xs text-white/70">
+                      {Object.keys(docs).length}/4 uploaded
+                    </div>
                   </ReviewBlock>
                 </Section>
 
@@ -442,8 +526,8 @@ export default function RegisterStationPage() {
                 <div>
                   <h3 className="text-xl font-semibold text-white">Request received</h3>
                   <p className="mt-1 text-sm text-white/55">
-                    Your station registration has been forwarded to Saheli super-admin operations for verification.
-                    You will receive an email with your Station ID and QR onboarding link after approval.
+                    Your station registration has been forwarded to Saheli super-admin operations.
+                    On approval, the OIC will receive a login email with Station ID + temporary password.
                   </p>
                 </div>
                 <Badge variant="outline" className="font-mono">
@@ -462,8 +546,6 @@ export default function RegisterStationPage() {
     </motion.div>
   );
 }
-
-/* ---------------------------- Helpers ---------------------------- */
 
 function Stepper({ stage }: { stage: 1 | 2 | 3 | 4 }) {
   const items = ["Details", "Location", "Documents", "Done"];
@@ -499,7 +581,7 @@ function Stepper({ stage }: { stage: 1 | 2 | 3 | 4 }) {
   );
 }
 
-function Section({ title, icon: Icon, children }: { title: string; icon: any; children: React.ReactNode }) {
+function Section({ title, icon: Icon, children }: { title: string; icon: React.ComponentType<{ className?: string }>; children: React.ReactNode }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">

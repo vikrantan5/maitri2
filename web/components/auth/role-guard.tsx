@@ -28,11 +28,24 @@ export function RoleGuard({
         router.replace("/login");
         return;
       }
+
+      // 1) Refresh ID token so the cookie + claims are up to date
+      try {
+        const idToken = await fbUser.getIdToken(true);
+        // Synchronise the httpOnly session cookie used by middleware
+        await fetch("/api/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken }),
+        });
+      } catch (e) {
+        console.warn("[role-guard] could not refresh session cookie", e);
+      }
+
       const u = await fetchUserRole(fbUser.uid, fbUser.email);
       setUser(u);
       setHydrated(true);
       if (!allow.includes(u.role)) {
-        // Wrong role → bounce to their landing
         const map: Record<Role, string> = {
           super_admin: "/super-admin",
           police_station: "/station",
