@@ -5,10 +5,10 @@ import {
   collection,
   limit,
   onSnapshot,
-  orderBy,
+ 
   query,
   where,
-  type QueryConstraint,
+
   type DocumentData,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -97,16 +97,20 @@ export function useEmergencyCases(scope?: {
   useEffect(() => {
     setLoading(true);
 
-    const baseConstraints: QueryConstraint[] = [];
-    if (activeOnly) baseConstraints.push(where("status", "in", ACTIVE));
+    // IMPORTANT: We deliberately do NOT push `where("status","in",ACTIVE)` or
+    // `orderBy("createdAt","desc")` into the Firestore query. Combining
+    // `in` + equality + orderBy requires a composite index that the user
+    // would have to manually create — and if it's missing, Firestore
+    // returns an error and the listener silently shows zero results
+    // (this is exactly the "case shows briefly then disappears on refresh"
+    // bug). We filter status + sort by createdAt client-side instead.
+    // The query still scales: we cap each shard at `max` (default 50).
 
     if (stationId) {
       // -- Listener A: cases assigned to MY station
       const qA = query(
         collection(db, "emergencyCases"),
-        ...baseConstraints,
         where("assignedStationId", "==", stationId),
-        orderBy("createdAt", "desc"),
         limit(max),
       );
       const unsubA = onSnapshot(
@@ -124,9 +128,7 @@ export function useEmergencyCases(scope?: {
       // -- Listener B: brand-new / unassigned cases (null assignedStationId)
       const qB = query(
         collection(db, "emergencyCases"),
-        ...baseConstraints,
         where("assignedStationId", "==", null),
-        orderBy("createdAt", "desc"),
         limit(max),
       );
       const unsubB = onSnapshot(
@@ -147,12 +149,7 @@ export function useEmergencyCases(scope?: {
     }
 
     // -- Global listener (super_admin, no station filter)
-    const qG = query(
-      collection(db, "emergencyCases"),
-      ...baseConstraints,
-      orderBy("createdAt", "desc"),
-      limit(max),
-    );
+    const qG = query(collection(db, "emergencyCases"), limit(max));
     const unsub = onSnapshot(
       qG,
       (snap) => {
@@ -167,12 +164,13 @@ export function useEmergencyCases(scope?: {
     setByStation([]);
     setUnassigned([]);
     return () => unsub();
-  }, [stationId, activeOnly, max]);
+  }, [stationId, max]);
 
   const cases = useMemo(() => {
-    if (!stationId) return global ?? [];
-    return dedupeAndSort([...byStation, ...unassigned]);
-  }, [stationId, byStation, unassigned, global]);
+    const raw = !stationId ? (global ?? []) : [...byStation, ...unassigned];
+    const filtered = activeOnly ? raw.filter((c) => ACTIVE.includes(c.status)) : raw;
+    return dedupeAndSort(filtered);
+  }, [stationId, byStation, unassigned, global, activeOnly]);
 
   return { cases, loading };
 }
