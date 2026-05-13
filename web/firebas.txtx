@@ -119,9 +119,15 @@ service cloud.firestore {
 
     // ---------- Dashboard collections ----------
 
-    // Approved police stations directory
+    // Approved police stations directory.
+    // NOTE: Single-doc reads are PUBLIC because the station's stationId is
+    // printed on the publicly displayed QR onboarding poster, and the mobile
+    // officer-onboarding flow needs to verify the station exists & is
+    // approved BEFORE the officer is signed in. Listing the whole collection
+    // still requires authentication so we don't expose the directory in bulk.
     match /policeStations/{stationId} {
-      allow read: if isSignedIn();
+        allow get: if true;
+      allow list: if isSignedIn();
       allow create, update, delete: if isAdmin();
     }
 

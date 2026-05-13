@@ -1,4 +1,5 @@
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import { db } from '../config/firebaseConfig';
 import ENV from '../config/env';
 
@@ -12,21 +13,33 @@ const BACKEND_URL = ENV.BACKEND_URL || '';
 export const saveSOSEventToFirestore = async (sosResult) => {
   try {
     const sosEventsRef = collection(db, 'sos_events');
-    
+
+    // Capture the signed-in user so the station/admin dashboards can
+    // correlate the SOS to a user record.
+    const currentUser = getAuth().currentUser;
+    const uid = currentUser?.uid || null;
+
     const eventData = {
       success: sosResult.success || false,
+      // canonical user identity (consumed by web `ensureCaseFromSosEvent`)
+      userId: uid,
+      user_id: uid,
       userName: sosResult.userName || 'Unknown',
+      user_name: sosResult.userName || 'Unknown',
       contactsCount: sosResult.contactsCount || 0,
       timestamp: sosResult.timestamp || new Date().toISOString(),
       createdAt: serverTimestamp(),
-      
+      created_at: new Date().toISOString(),
+
       // Location data
       location: sosResult.location || null,
       locationUrl: sosResult.locationUrl || null,
-      
-      // Evidence URLs
+
+      // Evidence URLs (both casings for the web normalizer)
       imageUrl: sosResult.imageUrl || null,
+      image_url: sosResult.imageUrl || null,
       audioUrl: sosResult.audioUrl || null,
+      audio_url: sosResult.audioUrl || null,
       
       // Status details
       sms: {

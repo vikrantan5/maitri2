@@ -10,6 +10,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { router } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -17,7 +18,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   Shield,
   ArrowLeft,
-  QrCode,
   User,
   BadgeCheck,
   Phone,
@@ -25,6 +25,8 @@ import {
   Lock,
   ScanLine,
   CheckCircle2,
+  Keyboard as KeyboardIcon,
+  X,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addDoc, collection, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -34,8 +36,14 @@ import { auth, db } from '../../config/firebaseConfig';
 /**
  * Officer onboarding flow:
  *   1) Scan station QR  →  extract stationId
+ *      (or tap "Enter Station ID manually" — works on iOS, Android & web)
  *   2) Fill officer details + create Firebase Auth account
  *   3) Submit /officerRequests doc  →  station OIC approves on web
+ *
+ * IMPORTANT: this screen reads `policeStations/{stationId}` BEFORE the
+ * officer is signed in (to validate the QR poster). Firestore rules must
+ * allow public single-doc GET on /policeStations/{id} for that to succeed.
+ * See firebas.txtx / firestore.rules at the repo root.
  */
 export default function OfficerRegisterScreen() {
   const insets = useSafeAreaInsets();
@@ -43,6 +51,9 @@ export default function OfficerRegisterScreen() {
   const [stage, setStage] = useState('scan'); // scan | form | done
   const [stationId, setStationId] = useState('');
   const [stationName, setStationName] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualValue, setManualValue] = useState('');
   const scanLockRef = useRef(false);
 
   const [form, setForm] = useState({
@@ -61,59 +72,90 @@ export default function OfficerRegisterScreen() {
     if (permission && !permission.granted) requestPermission();
   }, [permission]);
 
+  /**
+   * Parse the QR payload (URL or raw stationId) and verify the station
+   * exists & is approved. Public read is required (see Firestore rules).
+   */
+const verifyStation = async (rawValue) => {
+  setVerifying(true);
+  try {
+    let id = '';
+    const trimmed = String(rawValue || '').trim();
+    if (!trimmed) throw new Error('Please provide a Station ID.');
+
+    // QR variants:
+    //   saheli://onboard?stationId=XYZ&token=...
+    //   https://saheli.app/onboard?stationId=XYZ
+    //   plain: XYZ
+    if (trimmed.includes('?') || /^[a-z]+:\/\//i.test(trimmed)) {
+      try {
+        const u = new URL(trimmed);
+        id = u.searchParams.get('stationId') || '';
+      } catch (urlError) {  // ← Fix: Add error parameter
+        id = '';
+      }
+    }
+    if (!id) id = trimmed;
+    if (!id) throw new Error('Invalid QR code.');
+
+    console.log('[officer-onboard] verifying station', id);
+    const stationSnap = await getDoc(doc(db, 'policeStations', id));
+    if (!stationSnap.exists()) {
+      throw new Error(
+        `Station "${id}" not found. Please check the ID printed on the QR poster or contact your station OIC.`,
+      );
+    }
+    const sdata = stationSnap.data() || {};
+    if (sdata.status && sdata.status !== 'approved') {
+      throw new Error(
+        `This station is currently "${sdata.status}". Onboarding is only available for approved stations.`,
+      );
+    }
+    setStationId(id);
+    setStationName(sdata.name || id);
+    setStage('form');
+  } catch (e) {
+    console.warn('[officer-onboard] station verify failed', e?.code, e?.message);
+    const msg = /permission/i.test(String(e?.message || e?.code || ''))
+      ? 'Could not verify station — Firestore rejected the read. Make sure your Saheli admin has deployed the latest security rules that allow public read on /policeStations/{id}.'
+      : e?.message || 'Could not verify station.';
+    Alert.alert('Station check failed', msg);
+    scanLockRef.current = false;
+  } finally {
+    setVerifying(false);
+  }
+};
+
   const handleScanned = async ({ data }) => {
     if (scanLockRef.current) return;
     scanLockRef.current = true;
-    try {
-      // QR encodes: saheli://onboard?stationId=XYZ  or  https://.../?stationId=XYZ
-      let id = '';
-      try {
-        const u = new URL(data);
-        id = u.searchParams.get('stationId') || '';
-      } catch {
-        // raw stationId string
-        id = String(data).trim();
-      }
-      if (!id) throw new Error('Invalid QR code');
+    await verifyStation(data);
+  };
 
-      // Verify station exists & is approved
-      const stationSnap = await getDoc(doc(db, 'policeStations', id));
-      if (!stationSnap.exists()) {
-        Alert.alert(
-          'Station not found',
-          'This station is not registered or not yet approved. Please scan an official Saheli station QR.',
-        );
-        scanLockRef.current = false;
-        return;
-      }
-      const data_ = stationSnap.data();
-    if (data_.status !== 'approved') {
-        Alert.alert('Station inactive', `Station status: ${data_.status}. Cannot onboard officers.`);
-        scanLockRef.current = false;
-        return;
-      }
-      setStationId(id);
-      setStationName(data_.name || id);
-      setStage('form');
-    } catch (e) {
-      Alert.alert('Scan error', e?.message || 'Could not read QR code.');
-      scanLockRef.current = false;
+  const submitManual = async () => {
+    if (!manualValue.trim()) {
+      Alert.alert('Enter Station ID', 'Type the Station ID printed on your QR poster.');
+      return;
     }
+    setManualOpen(false);
+    scanLockRef.current = true;
+    await verifyStation(manualValue.trim());
+    setManualValue('');
   };
 
-  const validate = () => {
-    const e = {};
-    if (!form.name.trim()) e.name = 'Full name is required';
-    if (!form.badgeNumber.trim()) e.badgeNumber = 'Badge number is required';
-    if (!form.phone.trim()) e.phone = 'Phone is required';
-    else if (form.phone.replace(/\D/g, '').length < 10) e.phone = 'Enter at least 10 digits';
-    if (!form.email.trim()) e.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Invalid email';
-    if (!form.password) e.password = 'Password is required';
-    else if (form.password.length < 6) e.password = 'At least 6 characters';
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
+const validate = () => {
+  const e = {};
+  if (!form.name.trim()) e.name = 'Full name is required';
+  if (!form.badgeNumber.trim()) e.badgeNumber = 'Badge number is required';
+  if (!form.phone.trim()) e.phone = 'Phone is required';
+  else if (form.phone.replace(/\D/g, '').length < 10) e.phone = 'Enter at least 10 digits';
+  if (!form.email.trim()) e.email = 'Email is required';
+  else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Invalid email';
+  if (!form.password) e.password = 'Password is required';
+  else if (form.password.length < 6) e.password = 'At least 6 characters';
+  setErrors(e);
+  return Object.keys(e).length === 0;
+};
 
   const submit = async () => {
     if (!validate()) return;
@@ -128,7 +170,7 @@ export default function OfficerRegisterScreen() {
       // IMPORTANT: Force a fresh ID token so Firestore rules see request.auth
       // before we attempt the writes below. Without this, the very first
       // Firestore write can race the SDK's auth-state propagation and fail
-      // with \"Missing or insufficient permissions\".
+      // with "Missing or insufficient permissions".
       try {
         await cred.user.getIdToken(true);
       } catch (tokErr) {
@@ -174,8 +216,9 @@ export default function OfficerRegisterScreen() {
         msg = 'This email already has a Saheli account. Use a different email or contact your station OIC.';
       } else if (e?.code === 'auth/weak-password') {
         msg = 'Password is too weak — use at least 6 characters.';
-         } else if (e?.code === 'permission-denied' || /permission/i.test(String(e?.message || ''))) {
-        msg = 'Firebase rejected the request (permission-denied). Make sure Firestore rules allow officerRequests creation and that you completed the QR scan first.';
+      } else if (e?.code === 'permission-denied' || /permission/i.test(String(e?.message || ''))) {
+        msg =
+          'Firebase rejected the request (permission-denied). The Saheli admin must deploy the latest Firestore rules that permit /officerRequests creation by signed-in users.';
       }
       Alert.alert('Could not submit', msg);
     } finally {
@@ -205,7 +248,7 @@ export default function OfficerRegisterScreen() {
             <Text style={styles.title}>Officer Onboarding</Text>
             <Text style={styles.subtitle}>
               {stage === 'scan'
-                ? 'Scan the QR code displayed at your police station to begin registration.'
+                ? 'Scan the QR code at your police station — or enter the Station ID manually.'
                 : stage === 'form'
                 ? `Station: ${stationName || stationId}`
                 : 'Your request is in review.'}
@@ -226,9 +269,19 @@ export default function OfficerRegisterScreen() {
                 <Text style={styles.permText}>Requesting camera permission…</Text>
               ) : !permission.granted ? (
                 <View style={styles.permBox}>
-                  <Text style={styles.permText}>Camera permission required to scan station QR.</Text>
-                  <TouchableOpacity style={styles.primaryBtn} onPress={requestPermission}>
+                  <Text style={styles.permText}>
+                    Camera permission required to scan the station QR. You can also enter the Station ID manually below.
+                  </Text>
+                  <TouchableOpacity style={styles.primaryBtn} onPress={requestPermission} data-testid="grant-camera-permission">
                     <Text style={styles.primaryBtnText}>Grant permission</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.secondaryBtn, { marginTop: 10 }]}
+                    onPress={() => setManualOpen(true)}
+                    data-testid="open-manual-entry-noperm"
+                  >
+                    <KeyboardIcon size={16} color="#00E5FF" />
+                    <Text style={styles.secondaryBtnText}>Enter Station ID manually</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -238,24 +291,26 @@ export default function OfficerRegisterScreen() {
                       style={StyleSheet.absoluteFillObject}
                       facing="back"
                       barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-                      onBarcodeScanned={handleScanned}
+                      onBarcodeScanned={verifying ? undefined : handleScanned}
                     />
                     <View pointerEvents="none" style={styles.scanOverlay}>
                       <ScanLine size={48} color="#00E5FF" />
                     </View>
+                    {verifying && (
+                      <View pointerEvents="none" style={styles.scanOverlayDark}>
+                        <ActivityIndicator color="#00E5FF" size="large" />
+                        <Text style={styles.verifyingText}>Verifying station…</Text>
+                      </View>
+                    )}
                   </View>
                   <Text style={styles.hint}>Align the station QR within the frame.</Text>
                   <TouchableOpacity
-                    style={styles.linkBtn}
-                    onPress={() => {
-                      Alert.prompt?.(
-                        'Enter Station ID manually',
-                        'Type the Station ID printed on your QR poster.',
-                        (val) => val && handleScanned({ data: val }),
-                      );
-                    }}
+                    style={styles.secondaryBtn}
+                    onPress={() => setManualOpen(true)}
+                    data-testid="open-manual-entry"
                   >
-                    <Text style={styles.linkBtnText}>Enter Station ID manually</Text>
+                    <KeyboardIcon size={16} color="#00E5FF" />
+                    <Text style={styles.secondaryBtnText}>Enter Station ID manually</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -335,6 +390,7 @@ export default function OfficerRegisterScreen() {
                   scanLockRef.current = false;
                   setStage('scan');
                 }}
+                data-testid="officer-rescan"
               >
                 <Text style={styles.linkBtnText}>← Scan a different station</Text>
               </TouchableOpacity>
@@ -358,6 +414,57 @@ export default function OfficerRegisterScreen() {
             </View>
           )}
         </ScrollView>
+
+        {/* Manual Station ID modal — cross-platform replacement for Alert.prompt */}
+        <Modal
+          visible={manualOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setManualOpen(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard} data-testid="manual-station-modal">
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Enter Station ID</Text>
+                <TouchableOpacity
+                  onPress={() => setManualOpen(false)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  data-testid="manual-station-close"
+                >
+                  <X size={20} color="rgba(255,255,255,0.7)" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.modalSubtitle}>
+                Type the Station ID printed on your QR poster (e.g. PS-DEL-001) and tap Verify.
+              </Text>
+              <View style={styles.inputBox}>
+                <BadgeCheck size={18} color="#00E5FF" />
+                <TextInput
+                  style={[styles.input, { marginLeft: 12 }]}
+                  placeholder="Station ID"
+                  placeholderTextColor="#7C82A6"
+                  value={manualValue}
+                  onChangeText={setManualValue}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  data-testid="manual-station-input"
+                />
+              </View>
+              <TouchableOpacity
+                style={[styles.primaryBtn, { marginTop: 14 }]}
+                onPress={submitManual}
+                disabled={verifying}
+                data-testid="manual-station-verify"
+              >
+                {verifying ? (
+                  <ActivityIndicator color="#0F1226" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Verify station</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </LinearGradient>
     </KeyboardAvoidingView>
   );
@@ -429,6 +536,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#000', borderWidth: 2, borderColor: 'rgba(0,229,255,0.4)',
   },
   scanOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  scanOverlayDark: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(15,18,38,0.7)',
+  },
+  verifyingText: { color: '#FFFFFF', marginTop: 12, fontSize: 13, fontWeight: '600' },
   hint: { color: 'rgba(255,255,255,0.6)', textAlign: 'center', marginTop: 14, fontSize: 12 },
   permBox: { paddingVertical: 30, alignItems: 'center' },
   permText: { color: 'rgba(255,255,255,0.75)', textAlign: 'center', marginBottom: 16 },
@@ -451,6 +564,13 @@ const styles = StyleSheet.create({
     shadowColor: '#00E5FF', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },
   primaryBtnText: { color: '#0F1226', fontWeight: '800', fontSize: 15, letterSpacing: 0.4 },
+  secondaryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 12, paddingHorizontal: 18, marginTop: 12,
+    borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,229,255,0.4)',
+    backgroundColor: 'rgba(0,229,255,0.05)',
+  },
+  secondaryBtnText: { color: '#00E5FF', fontWeight: '700', fontSize: 14, marginLeft: 6 },
   linkBtn: { paddingVertical: 12, alignItems: 'center' },
   linkBtnText: { color: 'rgba(0,229,255,0.85)', fontSize: 13, fontWeight: '600' },
 
@@ -468,4 +588,29 @@ const styles = StyleSheet.create({
   doneTitle: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
   doneMsg: { color: 'rgba(255,255,255,0.7)', textAlign: 'center', marginTop: 10, lineHeight: 19 },
   doneMeta: { color: 'rgba(255,255,255,0.4)', fontFamily: 'monospace', marginTop: 14, fontSize: 11 },
+
+  // Manual entry modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(8,10,24,0.78)',
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 22,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#161A37',
+    borderRadius: 20,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(0,229,255,0.18)',
+    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 18, shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  modalTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.3 },
+  modalSubtitle: { color: 'rgba(255,255,255,0.65)', fontSize: 12, lineHeight: 17, marginBottom: 16, marginTop: 4 },
 });
