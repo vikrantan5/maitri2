@@ -18,8 +18,10 @@ import {
   Settings,
   Shield,
   Siren,
+  Smartphone,
   UserCog,
   Users,
+  Video,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/lib/auth";
@@ -31,6 +33,8 @@ const NAV: Record<Role, { label: string; href: string; icon: any }[]> = {
     { label: "Approvals", href: "/super-admin/stations/requests", icon: BadgeCheck },
     { label: "Users", href: "/super-admin/users", icon: Users },
     { label: "Emergencies", href: "/super-admin/emergencies", icon: Siren },
+    { label: "Mobile Stats", href: "/super-admin/mobile-stats", icon: Smartphone },
+    { label: "Videos", href: "/super-admin/videos", icon: Video },
     { label: "Analytics", href: "/super-admin/analytics", icon: BarChart3 },
     { label: "Heatmap", href: "/super-admin/heatmap", icon: Flame },
     { label: "Settings", href: "/super-admin/settings", icon: Settings },

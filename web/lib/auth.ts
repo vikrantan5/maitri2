@@ -18,11 +18,30 @@ export interface SaheliUser {
   officerId?: string;
 }
 
-const SUPER_ADMIN_EMAILS = [
-  (process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL || "admin@saheli.com").toLowerCase(),
-  "admin@saheli.com",
-];
+/**
+ * Build the super-admin allow-list from env (supports both a single
+ * NEXT_PUBLIC_SUPER_ADMIN_EMAIL and a comma-separated
+ * NEXT_PUBLIC_SUPER_ADMIN_EMAILS list).
+ */
+function buildSuperAdminEmails(): string[] {
+  const single = (process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL || "").toLowerCase().trim();
+  const list = (process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAILS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return Array.from(new Set([
+    single,
+    ...list,
+    "admin@saheli.com",
+  ].filter(Boolean)));
+}
 
+const SUPER_ADMIN_EMAILS = buildSuperAdminEmails();
+
+function isConfiguredSuperAdmin(email: string | null): boolean {
+  if (!email) return false;
+  return SUPER_ADMIN_EMAILS.includes(email.toLowerCase());
+}
 /**
  * Resolve the user's role using:
  *   1) Firebase custom claims (priority)
@@ -73,7 +92,7 @@ export async function fetchUserRole(uid: string, email: string | null): Promise<
   }
 
   // 3) Hardcoded admin fallback so first login works
-  if (!claimsRole && email && SUPER_ADMIN_EMAILS.includes(email.toLowerCase())) {
+    if (!claimsRole && email && isConfiguredSuperAdmin(email)) {
     claimsRole = "super_admin";
   }
 
@@ -89,11 +108,15 @@ export async function fetchUserRole(uid: string, email: string | null): Promise<
 
 async function bootstrapSuperAdmin(email: string) {
   // Idempotent — seed runs server-side and only acts when the admin
-  // doesn't yet exist or its claim is missing. Fires for the configured admin email.
+  // doesn't yet exist or its claim is missing. Fires for any configured
+  // super-admin email (legacy single var or comma-separated list).
   try {
-    const configured = (process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL || "admin@saheli.com").toLowerCase();
-    if (email.toLowerCase() !== configured && email.toLowerCase() !== "admin@saheli.com") return;
-    await fetch("/api/seed-admin", { method: "POST" });
+    if (!isConfiguredSuperAdmin(email)) return;
+    await fetch("/api/seed-admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.toLowerCase() }),
+    });
   } catch (e) {
     console.warn("[auth] seed-admin fetch failed", e);
   }
