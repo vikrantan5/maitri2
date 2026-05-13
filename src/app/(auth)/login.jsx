@@ -196,14 +196,14 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
              {/* Admin Portal Link */}
-            <TouchableOpacity
+            {/* <TouchableOpacity
               onPress={() => router.push('/(auth)/admin-login')}
               style={styles.adminLinkContainer}
               data-testid="go-to-admin-login"
             >
               <Text style={styles.adminLinkText}>Administrator? </Text>
               <Text style={styles.adminLink}>Sign in here</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
         </ScrollView>
       </LinearGradient>
