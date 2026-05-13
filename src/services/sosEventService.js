@@ -2,13 +2,17 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../config/firebaseConfig';
 import ENV from '../config/env';
+import { dispatchEmergencyCase } from './emergencyDispatchService';
 
 const BACKEND_URL = ENV.BACKEND_URL || '';
 
 /**
- * Save SOS event to Firestore for persistent storage
+ * Save SOS event to Firestore for persistent storage AND auto-dispatch
+ * the case to the nearest police station + verified officers + admin
+ * panel via a parallel write to /emergencyCases.
+ *
  * @param {Object} sosResult - The result object from triggerSOS
- * @returns {Promise<string>} Firestore document ID
+ * @returns {Promise<string>} Firestore document ID of the sos_events row
  */
 export const saveSOSEventToFirestore = async (sosResult) => {
   try {
@@ -40,7 +44,7 @@ export const saveSOSEventToFirestore = async (sosResult) => {
       image_url: sosResult.imageUrl || null,
       audioUrl: sosResult.audioUrl || null,
       audio_url: sosResult.audioUrl || null,
-      
+
       // Status details
       sms: {
         success: sosResult.sms?.success || false,
@@ -58,7 +62,7 @@ export const saveSOSEventToFirestore = async (sosResult) => {
         uploaded: sosResult.audioRecording?.uploaded || false,
       },
       photoCapture: sosResult.photoCapture || null,
-      
+
       // Error info
       imageUploadError: sosResult.imageUploadError || null,
       audioUploadError: sosResult.audioUploadError || null,
@@ -66,6 +70,23 @@ export const saveSOSEventToFirestore = async (sosResult) => {
 
     const docRef = await addDoc(sosEventsRef, eventData);
     console.log('SOS event saved to Firestore:', docRef.id);
+
+    // Fire-and-forget: also create the routed emergencyCases doc so the
+    // nearest station + verified officers + admin panel get it instantly.
+    // We don't await — the SMS/call evidence flow already succeeded; this
+    // is the dispatch overlay on top of it.
+    dispatchEmergencyCase({
+      sourceEventId: docRef.id,
+      userId: uid || 'unknown',
+      userName: sosResult.userName || 'Unknown',
+      userPhone: sosResult.userPhone || '',
+      location: sosResult.location || null,
+      imageUrl: sosResult.imageUrl || null,
+      audioUrl: sosResult.audioUrl || null,
+    }).catch((err) =>
+      console.error('[sosEventService] dispatchEmergencyCase failed (continuing):', err?.code, err?.message),
+    );
+
     return docRef.id;
   } catch (error) {
     console.error('Failed to save SOS event to Firestore:', error);

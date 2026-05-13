@@ -14,14 +14,21 @@ export const saveUserDetails = async (uid, userData) => {
     console.log('Data:', userData);
     
     const userRef = doc(db, 'users', uid);
-    await setDoc(userRef, {
-      name: userData.name,
-      address: userData.address,
-      occupation: userData.occupation,
-      emergencyContacts: userData.emergencyContacts,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+    // Use merge:true so we never wipe pre-existing fields like
+    // pendingOfficer/pendingStationId (set during officer-onboarding) or
+    // role/stationId/officerId (set by the server-side approval route).
+    await setDoc(
+      userRef,
+      {
+        name: userData.name,
+        address: userData.address,
+        occupation: userData.occupation,
+        emergencyContacts: userData.emergencyContacts,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
     
     console.log('✅ User details saved successfully to Firestore!');
   } catch (error) {

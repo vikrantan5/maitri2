@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -25,6 +26,19 @@ service cloud.firestore {
        doc from the client. That is why the previous client-side
        approval flow was failing with "Missing or insufficient
        permissions". The fix is the server route, not looser rules.
+
+       SOS DISPATCH NOTE
+       -----------------
+       /policeOfficers read is open to any signed-in user. The mobile
+       app needs to look up "verified officers of the nearest station"
+       at the instant of an SOS to write /emergencyCases with the
+       correct `assignedOfficers` UIDs. Officer roster (name, badge,
+       phone) is not considered sensitive for our threat model.
+
+       /emergencyCases read uses `get(field, default)` to safely
+       handle docs where assignedStationId or assignedOfficers are
+       not yet set — otherwise a single legacy doc breaks the entire
+       collection-level query with "permission denied".
        ============================================================ */
 
     // ---------- Helpers ----------
@@ -139,7 +153,7 @@ service cloud.firestore {
     // Single-doc GET is PUBLIC because the station's stationId is printed
     // on the QR onboarding poster and the mobile officer-onboarding flow
     // needs to verify the station exists & is approved BEFORE the officer
-    // is signed in.
+    // is signed in. List queries require sign-in.
     match /policeStations/{stationId} {
       allow get: if true;
       allow list: if isSignedIn();
@@ -152,13 +166,13 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
-    // Police officers roster
+    // Police officers roster.
+    // Read is open to any signed-in user — the mobile SOS dispatch flow
+    // needs to look up approved officers of the nearest station to set
+    // `assignedOfficers` on the emergencyCases doc. Writes are still
+    // station-scoped or admin-only.
     match /policeOfficers/{officerId} {
-      allow read: if isSignedIn() && (
-        isAdmin() ||
-        (isStation() && resource.data.stationId == myStation()) ||
-        resource.data.uid == request.auth.uid
-      );
+      allow read: if isSignedIn();
       allow create, update: if isAdmin() ||
         (isStation() && request.resource.data.stationId == myStation());
       allow delete: if isAdmin();
@@ -172,14 +186,27 @@ service cloud.firestore {
         (isStation() && resource.data.stationId == myStation());
     }
 
-    // Emergency cases (operational SOS object)
+    // Emergency cases (operational SOS object).
+    //
+    //   Anyone may CREATE  (mobile SOS flow — auth not always available)
+    //   ADMIN/STATION/OFFICER may READ subject to scope:
+    //     - super_admin  → all
+    //     - station OIC  → cases routed to their station OR unrouted (null)
+    //     - officer      → cases where their uid appears in assignedOfficers
+    //   UPDATE allowed for any signed-in police/admin (state transitions,
+    //   notes, dispatch). DELETE admin-only.
+    //
+    // We use `get(field, default)` to avoid permission-denied on legacy
+    // docs that don't yet have assignedStationId / assignedOfficers.
     match /emergencyCases/{caseId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
-        (isStation() &&
-          (resource.data.assignedStationId == myStation() ||
-           resource.data.assignedStationId == null)) ||
-        (isOfficer() && request.auth.uid in resource.data.assignedOfficers)
+        (isStation() && (
+          resource.data.get('assignedStationId', null) == myStation() ||
+          resource.data.get('assignedStationId', null) == null
+        )) ||
+        (isOfficer() &&
+          request.auth.uid in resource.data.get('assignedOfficers', []))
       );
       allow create: if true;
       allow update: if isAdmin() || isStation() || isOfficer();
