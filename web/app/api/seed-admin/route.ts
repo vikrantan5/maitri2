@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: NextRequest) {
   try {
-    const legacy = (process.env.SUPER_ADMIN_EMAIL || "admin@saheli.com").toLowerCase();
+    const legacy = (process.env.SUPER_ADMIN_EMAIL || "admin@maitri.com").toLowerCase();
     const extra = (process.env.SUPER_ADMIN_EMAILS || "")
       .split(",")
       .map((s) => s.trim().toLowerCase())

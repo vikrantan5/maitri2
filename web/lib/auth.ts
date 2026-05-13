@@ -32,7 +32,7 @@ function buildSuperAdminEmails(): string[] {
   return Array.from(new Set([
     single,
     ...list,
-    "admin@saheli.com",
+    "admin@maitri.com",
   ].filter(Boolean)));
 }
 

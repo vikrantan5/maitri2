@@ -4,7 +4,7 @@ import crypto from "crypto";
 export const dynamic = "force-dynamic";
 
 // Returns a signed Cloudinary upload payload. Unauthenticated for now
-// (matches the existing FastAPI sign endpoint contract). If a Saheli FastAPI
+// (matches the existing FastAPI sign endpoint contract). If a Maitri FastAPI
 // backend is reachable via NEXT_PUBLIC_BACKEND_URL we delegate to it; otherwise
 // we sign locally using CLOUDINARY_API_SECRET in /app/.env.
 export async function POST(req: NextRequest) {
