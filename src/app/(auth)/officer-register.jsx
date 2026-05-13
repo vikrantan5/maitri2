@@ -233,12 +233,8 @@ const validate = () => {
       } else if (e?.code === 'auth/weak-password') {
         msg = 'Password is too weak — use at least 6 characters.';
       } else if (e?.code === 'permission-denied' || /permission/i.test(String(e?.message || ''))) {
-        msg =
-          'Firebase rejected the request (permission-denied). The Saheli admin must deploy the latest Firestore rules from /app/firestore.rules:
-
-   firebase deploy --only firestore:rules
-
-Until then officer onboarding cannot complete.';
+msg = 'Firebase rejected the request (permission-denied). The Saheli admin must deploy the latest Firestore rules from /app/firestore.rules:\n\n' +
+  'firebase deploy --only firestore:rules';
       }
       Alert.alert('Could not submit', msg);
     } finally {
