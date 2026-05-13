@@ -37,7 +37,11 @@ function RootLayoutNav() {
   const TRIPLE_CLICK_WINDOW = 3000; // 3 seconds window for triple-click
 
   // Function to check user details.
-  // Returns one of: 'officer' (officer with approved role), true (regular user w/ profile), or false (incomplete).
+  // Returns one of:
+  //   'officer'         — approved police_officer (route → /officer-dashboard)
+  //   'officer_pending' — registered via QR but not yet approved by station OIC
+  //   true              — regular user with completed profile (name + emergencyContacts)
+  //   false             — regular user with incomplete profile (needs user-details)
   const checkUserDetails = async (currentUser) => {
     if (currentUser) {
       try {
@@ -47,6 +51,11 @@ function RootLayoutNav() {
           console.log('User is an approved police_officer');
           setHasUserDetails('officer');
           return 'officer';
+        }
+        if (userDetails?.pendingOfficer === true && userDetails?.role !== 'police_officer') {
+          console.log('User is a pending police_officer (awaiting station approval)');
+          setHasUserDetails('officer_pending');
+          return 'officer_pending';
         }
         const hasDetails = !!(userDetails && userDetails.name && userDetails.emergencyContacts);
         console.log('User has details:', hasDetails);
@@ -178,9 +187,19 @@ function RootLayoutNav() {
     return unsubscribe;
   }, []);
 
-  // Re-check user details when navigating to tabs
+  // Re-check user details when navigating to key routes (tabs, officer routes, pending).
+  // This is critical for the officer-pending → officer-dashboard hand-off after
+  // station approval (avoids an infinite redirect loop because root state still
+  // says \"officer_pending\" until refetched).
   useEffect(() => {
-    if (user && segments[0] === '(tabs)' && !hasUserDetails) {
+    if (!user) return;
+    const seg0 = segments[0];
+    if (
+      seg0 === '(tabs)' ||
+      seg0 === 'officer-dashboard' ||
+      seg0 === 'officer-pending' ||
+      seg0 === 'officer-case'
+    ) {
       checkUserDetails(user);
     }
   }, [segments, user]);
@@ -195,7 +214,9 @@ function RootLayoutNav() {
     // Officer detection: officers have role === 'police_officer' in their users/{uid} doc.
     // They skip the user-details flow entirely and land on /officer-dashboard.
     const isOfficer = hasUserDetails === 'officer';
+    const isPendingOfficer = hasUserDetails === 'officer_pending';
     const onOfficerRoute = segments[0] === 'officer-dashboard' || segments[0] === 'officer-case';
+    const onOfficerPendingRoute = segments[0] === 'officer-pending';
 
     if (!user && !inAuthGroup) {
       console.log('→ Redirecting to login (no user)');
@@ -203,10 +224,18 @@ function RootLayoutNav() {
     } else if (user && isOfficer && !onOfficerRoute) {
       console.log('→ Redirecting to officer dashboard');
       router.replace('/officer-dashboard');
-    } else if (user && !isOfficer && !hasUserDetails && segments[1] !== 'user-details') {
+    } else if (user && isPendingOfficer && !onOfficerPendingRoute) {
+      // Officer registered via QR but station OIC hasn't approved yet.
+      // Do NOT push them through the citizen \"Complete Your Profile\" flow.
+      console.log('→ Redirecting to officer-pending (awaiting approval)');
+      router.replace('/officer-pending');
+      } else if (user && !isOfficer && !isPendingOfficer && !hasUserDetails
+              && segments[1] !== 'user-details'
+              && segments[1] !== 'officer-register'
+              && segments[0] !== 'officer-pending') {
       console.log('→ Redirecting to user-details (no profile)');
       router.replace('/(auth)/user-details');
-    } else if (user && hasUserDetails && !isOfficer && inAuthGroup) {
+    } else if (user && hasUserDetails && !isOfficer && !isPendingOfficer && inAuthGroup && segments[1] !== 'officer-register') {
       console.log('→ Redirecting to dashboard (profile complete)');
       router.replace('/(tabs)');
     }
@@ -234,6 +263,7 @@ function RootLayoutNav() {
       <Stack.Screen name="video-player" />
         <Stack.Screen name="notifications" />
               <Stack.Screen name="officer-dashboard" />
+               <Stack.Screen name="officer-pending" />
       <Stack.Screen name="officer-case/[id]" />
     </Stack>
   );

@@ -1,0 +1,202 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* ============================================================
+       SAHELI — Production Firestore Security Rules
+       Mobile app + Saheli web dashboard.
+
+       Roles (stored in users/{uid}.role):
+         super_admin    — global ops (web only)
+         police_station — station OIC (web + mobile sign-in)
+         police_officer — field officer (mobile + web /officer)
+         (regular end users have no `role` field)
+
+       IMPORTANT ARCHITECTURE NOTE
+       ---------------------------
+       Privileged writes (assigning role:police_officer, creating
+       Firebase Auth users, setting custom claims, mutating other
+       users' docs) MUST happen ONLY through the secure server
+       routes /api/create-officer and /api/create-station, which
+       use Firebase Admin SDK and therefore bypass these rules.
+
+       The rules below are intentionally strict — they do NOT let
+       a station mutate `role`/`stationId` on someone else's user
+       doc from the client. That is why the previous client-side
+       approval flow was failing with "Missing or insufficient
+       permissions". The fix is the server route, not looser rules.
+       ============================================================ */
+
+    // ---------- Helpers ----------
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+
+    function userDocPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+    function userDocExists() {
+      return isSignedIn() && exists(userDocPath());
+    }
+    function userDoc() { return get(userDocPath()).data; }
+
+    function role() {
+      return userDocExists() ? userDoc().role : null;
+    }
+    function isAdmin() {
+      return isSignedIn() && (
+        role() == 'super_admin' ||
+        (userDocExists() && userDoc().isAdmin == true)
+      );
+    }
+    function isStation() { return isSignedIn() && role() == 'police_station'; }
+    function isOfficer() { return isSignedIn() && role() == 'police_officer'; }
+    function myStation() { return userDocExists() ? userDoc().stationId : null; }
+
+    // ---------- Users ----------
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(uid);
+      // Users can self-edit their own doc but cannot self-assign privileged
+      // fields. Admins (via direct client write) can change anything.
+      // NOTE: role/stationId for police_officer are set by the server route
+      // /api/create-officer (Admin SDK, bypasses these rules).
+      allow update: if (isOwner(uid) &&
+                       !request.resource.data.diff(resource.data).affectedKeys()
+                          .hasAny(['isAdmin','role','stationId','officerId']))
+                    || isAdmin();
+      allow delete: if false;
+    }
+
+    // ---------- Products / Carts / Orders ----------
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /carts/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    match /orders/{orderId} {
+      allow read: if isSignedIn() &&
+                     (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() &&
+                       (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if false;
+    }
+
+    // ---------- Community / Safety ----------
+    match /community_posts/{postId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() &&
+                              (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /safety_markers/{markerId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn() &&
+                       (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /safety_alerts/{alertId} {
+      allow read: if isSignedIn() &&
+                     (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /safetyVideos/{videoId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /educational_videos/{videoId} {
+      allow read: if isAdmin() ||
+                     (isSignedIn() && resource.data.published == true);
+      allow write: if isAdmin();
+    }
+
+    // ---------- Analytics ----------
+    match /analytics_events/{eventId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /analytics_summary/{summaryId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if false;
+    }
+
+    // ---------- Dashboard collections ----------
+
+    // Approved police stations directory.
+    // Single-doc GET is PUBLIC because the station's stationId is printed
+    // on the QR onboarding poster and the mobile officer-onboarding flow
+    // needs to verify the station exists & is approved BEFORE the officer
+    // is signed in.
+    match /policeStations/{stationId} {
+      allow get: if true;
+      allow list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Station registration queue — public can submit
+    match /stationRequests/{requestId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // Police officers roster
+    match /policeOfficers/{officerId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        (isStation() && resource.data.stationId == myStation()) ||
+        resource.data.uid == request.auth.uid
+      );
+      allow create, update: if isAdmin() ||
+        (isStation() && request.resource.data.stationId == myStation());
+      allow delete: if isAdmin();
+    }
+
+    // Officer onboarding queue — public can submit (via mobile QR scan).
+    // Station OIC of the matching stationId reads & updates these.
+    match /officerRequests/{requestId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin() ||
+        (isStation() && resource.data.stationId == myStation());
+    }
+
+    // Emergency cases (operational SOS object)
+    match /emergencyCases/{caseId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        (isStation() &&
+          (resource.data.assignedStationId == myStation() ||
+           resource.data.assignedStationId == null)) ||
+        (isOfficer() && request.auth.uid in resource.data.assignedOfficers)
+      );
+      allow create: if true;
+      allow update: if isAdmin() || isStation() || isOfficer();
+      allow delete: if isAdmin();
+    }
+
+    // Legacy mobile SOS feed
+    match /sos_events/{id} {
+      allow read: if isSignedIn() && (isAdmin() || isStation() || isOfficer());
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    // Audit log
+    match /activityLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+    }
+  }
+}

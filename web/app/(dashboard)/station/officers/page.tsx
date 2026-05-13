@@ -32,11 +32,16 @@ export default function StationOfficersPage() {
     })();
   }, [stationId]);
 
-  const onApprove = async (id: string) => {
+   const onApprove = async (id: string) => {
     setActing(id);
     try {
-      await approveOfficerRequest(id, user?.email || "station");
-      toast.success("Officer approved");
+      const result = await approveOfficerRequest(id, user?.email || "station");
+      toast.success("Officer approved", {
+        description: result?.loginEmail
+          ? `Login: ${result.loginEmail}  •  Temp password: ${result.tempPassword}`
+          : undefined,
+        duration: 12000,
+      });
     } catch (e: any) {
       toast.error("Approval failed", { description: e.message });
     } finally {

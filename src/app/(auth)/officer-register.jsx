@@ -177,7 +177,12 @@ const validate = () => {
         console.warn('[officer-onboard] getIdToken(true) failed (continuing)', tokErr);
       }
 
-      // 2) Mirror minimal profile in /users so security rules can identify the user later
+      // 2) Mirror minimal profile in /users so security rules can identify the user later.
+      //    `pendingOfficer: true` tells the mobile app router to send this user to the
+      //    /officer-pending screen instead of the citizen \"Complete Your Profile\" flow.
+      //    Once the station OIC approves on the web dashboard, the server-side
+      //    /api/create-officer route will set role: 'police_officer' on this doc and
+      //    the mobile app will automatically move the officer to /officer-dashboard.
       console.log('[officer-onboard] writing users/' + uid);
       await setDoc(
         doc(db, 'users', uid),
@@ -185,12 +190,13 @@ const validate = () => {
           name: form.name.trim(),
           email: form.email.trim(),
           phone: form.phone.trim(),
+          pendingOfficer: true,
+          pendingStationId: stationId,
           createdAt: new Date().toISOString(),
           // role + stationId are set ONLY when station approves on web
         },
         { merge: true },
       );
-
       // 3) Submit officer onboarding request
       console.log('[officer-onboard] writing officerRequests for station', stationId);
       const ref = await addDoc(collection(db, 'officerRequests'), {
@@ -408,8 +414,8 @@ const validate = () => {
                 Your onboarding request has been sent to {stationName || stationId}. Once approved by your station OIC, you can sign in with your work email & password.
               </Text>
               <Text style={styles.doneMeta}>Request ID: {requestId}</Text>
-              <TouchableOpacity style={styles.primaryBtn} onPress={() => router.replace('/(auth)/login')} data-testid="officer-done-back">
-                <Text style={styles.primaryBtnText}>Back to sign-in</Text>
+              <TouchableOpacity style={styles.primaryBtn} onPress={() => router.replace('/officer-pending')} data-testid="officer-done-continue">
+                <Text style={styles.primaryBtnText}>Continue</Text>
               </TouchableOpacity>
             </View>
           )}
