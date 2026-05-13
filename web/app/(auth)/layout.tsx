@@ -8,7 +8,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div className="relative hidden overflow-hidden border-r border-[var(--border)] lg:flex lg:flex-col lg:justify-between p-12">
         <Link href="/" className="flex items-center gap-2 text-white">
           <Shield className="h-6 w-6 text-cyan" strokeWidth={2.4} />
-          <span className="font-mono text-sm tracking-[0.3em]">SAHELI</span>
+          <span className="font-mono text-sm tracking-[0.3em]">MAITRI</span>
         </Link>
 
         <div className="relative z-10">

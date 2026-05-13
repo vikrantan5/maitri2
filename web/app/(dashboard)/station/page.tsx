@@ -30,8 +30,8 @@ export default function StationCommandCenter() {
     })();
   }, [stationId]);
 
-  const newCount = cases.filter((c) => c.status === "new").length;
-  const inProgress = cases.filter((c) => c.status === "dispatched" || c.status === "in_progress").length;
+  const newCount = cases.filter((c) => c.status === "new" || c.status === "broadcasted").length;
+  const inProgress = cases.filter((c) => c.status === "dispatched" || c.status === "in_progress" || c.status === "assigned").length;
 
   return (
     <DashboardShell allow={["police_station"]} title="Command Center">

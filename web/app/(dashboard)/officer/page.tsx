@@ -79,7 +79,8 @@ export default function OfficerDashboard() {
                 <SosCard
                   key={c.id}
                   c={c}
-                  onAccept={c.status === "dispatched" ? () => action(c.id, "in_progress") : undefined}
+                   onAccept={c.status === "dispatched" || c.status === "assigned" ? () => action(c.id, "in_progress") : undefined}
+                  acceptLabel="Mark in-progress"
                   onResolve={() => action(c.id, "resolved")}
                   href={`/officer/case/${c.id}`}
                 />

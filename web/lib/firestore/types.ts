@@ -1,7 +1,9 @@
 import type { Timestamp } from "firebase/firestore";
 
 export type CaseStatus =
+  | "broadcasted"
   | "new"
+  | "assigned"
   | "acknowledged"
   | "dispatched"
   | "in_progress"
@@ -23,9 +25,15 @@ export interface EmergencyCase {
   audioUrl?: string;
   status: CaseStatus;
   priority: Priority;
-  assignedStationId?: string;
+  /** Stations that received the broadcast (within nearby radius). */
+  nearbyStationIds?: string[];
+  /** Set once a station wins the first-accept race. Null while broadcasting. */
+  assignedStationId?: string | null;
+  /** True once any station has accepted; mirrors `assignedStationId != null`. */
+  acceptedByStation?: boolean;
   assignedOfficers?: string[];
   acceptedAt?: Timestamp;
+  dispatchedAt?: Timestamp;
   resolvedAt?: Timestamp;
   notes?: { by: string; text: string; at: Timestamp }[];
   createdAt?: Timestamp;

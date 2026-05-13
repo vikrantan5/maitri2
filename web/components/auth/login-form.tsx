@@ -75,7 +75,7 @@ export default function LoginForm() {
             <ShieldCheck className="h-3 w-3 text-cyan" />
             Secure access
           </div>
-          <CardTitle>Sign in to Saheli</CardTitle>
+          <CardTitle>Sign in to Maitri</CardTitle>
           <CardDescription>
             Authorized personnel only. All sessions are logged for audit.
           </CardDescription>
@@ -171,7 +171,7 @@ export default function LoginForm() {
               </div>
             </div>
 
-            <Button
+            {/* <Button
               type="button"
               variant="outline"
               size="lg"
@@ -184,7 +184,7 @@ export default function LoginForm() {
               data-testid="login-phone-otp-button"
             >
               Continue with phone OTP
-            </Button>
+            </Button> */}
 
             <p className="pt-2 text-center text-[12px] text-white/40">
               Police station owner?{" "}
@@ -204,7 +204,7 @@ export default function LoginForm() {
                 </div>
                 <div className="text-[11px] leading-relaxed text-white/55">
                   <span className="font-semibold text-white/80">Police Officer?</span>{" "}
-                  Download the <b className="text-cyan">Saheli mobile app</b> and tap{" "}
+                  Download the <b className="text-cyan">Maitri mobile app</b> and tap{" "}
                   <b className="text-white/80">&quot;Register as Police Officer&quot;</b> on the login screen.
                   Scan your station&apos;s QR code to onboard. Approval is granted by your Station OIC.
                 </div>
@@ -215,7 +215,7 @@ export default function LoginForm() {
       </Card>
 
       <p className="mt-6 text-center text-[11px] uppercase tracking-[0.18em] text-white/30">
-        © Saheli Operations · v0.1.0
+        © Maitri Operations · v0.1.0
       </p>
     </motion.div>
   );

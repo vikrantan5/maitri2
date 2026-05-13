@@ -76,7 +76,8 @@ export default function EmergenciesPage() {
                     <tr className="border-b border-[var(--border)] text-left">
                       <Th>User</Th>
                       <Th>Status</Th>
-                      <Th>Station</Th>
+                      <Th>Broadcast</Th>
+                      <Th>Assigned</Th>
                       <Th>Location</Th>
                       <Th>Evidence</Th>
                       <Th>Officers</Th>
@@ -88,9 +89,14 @@ export default function EmergenciesPage() {
                       <tr key={c.id} className="border-b border-white/[0.04]" data-testid={`emergency-row-${c.id}`}>
                         <Td className="font-medium text-white">{c.userName || "Unknown"}</Td>
                         <Td>
-                          <Badge variant={c.status === "new" ? "danger" : c.status === "resolved" ? "ok" : "amber"}>
+                          <Badge variant={c.status === "new" || c.status === "broadcasted" ? "danger" : c.status === "resolved" ? "ok" : "amber"}>
                             {c.status?.replace("_", " ")}
                           </Badge>
+                        </Td>
+                        <Td className="font-mono text-[11px]" data-testid={`emergency-broadcast-${c.id}`}>
+                          {(c.nearbyStationIds?.length ?? 0) > 0
+                            ? `${c.nearbyStationIds!.length} station(s)`
+                            : "—"}
                         </Td>
                         <Td className="font-mono text-[11px]">{c.assignedStationId || "—"}</Td>
                         <Td className="font-mono text-[11px]">

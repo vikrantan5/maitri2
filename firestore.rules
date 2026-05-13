@@ -186,24 +186,31 @@ service cloud.firestore {
         (isStation() && resource.data.stationId == myStation());
     }
 
-    // Emergency cases (operational SOS object).
+    // Emergency cases (operational SOS object — multi-station broadcast).
     //
     //   Anyone may CREATE  (mobile SOS flow — auth not always available)
     //   ADMIN/STATION/OFFICER may READ subject to scope:
     //     - super_admin  → all
-    //     - station OIC  → cases routed to their station OR unrouted (null)
+    //     - station OIC  → cases where their station is in nearbyStationIds
+    //                      (i.e. they were broadcast to) OR they already
+    //                      won the first-accept race (assignedStationId).
+    //                      Unrouted legacy cases (nearbyStationIds missing
+    //                      AND assignedStationId == null) are still visible
+    //                      so an admin can manually assign them.
     //     - officer      → cases where their uid appears in assignedOfficers
     //   UPDATE allowed for any signed-in police/admin (state transitions,
     //   notes, dispatch). DELETE admin-only.
     //
-    // We use `get(field, default)` to avoid permission-denied on legacy
-    // docs that don't yet have assignedStationId / assignedOfficers.
+    // We use `get(field, default)` to gracefully degrade for legacy docs
+    // missing nearbyStationIds / assignedOfficers fields.
     match /emergencyCases/{caseId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
         (isStation() && (
+          myStation() in resource.data.get('nearbyStationIds', []) ||
           resource.data.get('assignedStationId', null) == myStation() ||
-          resource.data.get('assignedStationId', null) == null
+          (resource.data.get('nearbyStationIds', []).size() == 0 &&
+            resource.data.get('assignedStationId', null) == null)
         )) ||
         (isOfficer() &&
           request.auth.uid in resource.data.get('assignedOfficers', []))
@@ -212,7 +219,6 @@ service cloud.firestore {
       allow update: if isAdmin() || isStation() || isOfficer();
       allow delete: if isAdmin();
     }
-
     // Legacy mobile SOS feed
     match /sos_events/{id} {
       allow read: if isSignedIn() && (isAdmin() || isStation() || isOfficer());

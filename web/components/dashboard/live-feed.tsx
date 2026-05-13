@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { useEmergencyCases, useSosEvents } from "@/lib/realtime/useEmergencyCases";
 import { SosCard } from "./sos-card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { acceptCase, ensureCaseFromSosEvent, setCaseStatus } from "@/lib/firestore/cases";
+import { acceptCase, CaseAlreadyAssignedError, ensureCaseFromSosEvent, setCaseStatus } from "@/lib/firestore/cases";
 import type { EmergencyCase } from "@/lib/firestore/types";
 import { DispatchModal } from "./dispatch-modal";
 import { playAlarm, unlockAudioOnFirstGesture } from "@/lib/audio-alarm";
@@ -38,14 +38,18 @@ export function LiveFeed({
     });
   }, [events]);
 
-  // Audible alert + toast when a NEW case appears
-  const newCount = cases.filter((c) => c.status === "new").length;
+  // Audible alert + toast when a NEW broadcasted case appears that this
+  // station hasn't yet claimed.
+  const newCount = cases.filter(
+    (c) => (c.status === "broadcasted" || c.status === "new") && !c.assignedStationId,
+  ).length;
   const newIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     cases.forEach((c) => {
-      if (c.status === "new" && !newIdsRef.current.has(c.id)) {
+      const isFresh = (c.status === "broadcasted" || c.status === "new") && !c.assignedStationId;
+      if (isFresh && !newIdsRef.current.has(c.id)) {
         newIdsRef.current.add(c.id);
-        toast.error("\ud83d\udea8 New SOS triggered", {
+        toast.error("ud83dudea8 New SOS broadcast", {
           description: `${c.userName || "Unknown"} · ${c.location ? `${c.location.lat.toFixed(3)}, ${c.location.lng.toFixed(3)}` : "no location"}`,
         });
         playAlarm();
@@ -72,7 +76,7 @@ export function LiveFeed({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.2em] text-white/50">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-danger shadow-[0_0_8px_var(--red)]" />
-          Live SOS feed · {cases.length} active · {newCount} unattended
+          Live SOS feed · {cases.length} active · {newCount} unclaimed
         </div>
       </div>
       <div className="space-y-3">
@@ -80,14 +84,21 @@ export function LiveFeed({
           <SosCard
             key={c.id}
             c={c}
+            myStationId={scope?.stationId}
             onAccept={
               scope?.stationId
                 ? async () => {
                     try {
                       await acceptCase(c.id, scope!.stationId!, by);
-                      toast.success("Case accepted");
+                      toast.success("Case accepted — officers dispatched");
                     } catch (e: any) {
-                      toast.error("Could not accept", { description: e.message });
+                      if (e instanceof CaseAlreadyAssignedError) {
+                        toast.error("Another station accepted first", {
+                          description: `Locked to ${e.assignedStationId}`,
+                        });
+                      } else {
+                        toast.error("Could not accept", { description: e.message });
+                      }
                     }
                   }
                 : undefined

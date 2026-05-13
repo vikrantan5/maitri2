@@ -67,7 +67,7 @@ export function Sidebar({ role, userName }: { role: Role; userName?: string }) {
         </div>
         {!collapsed && (
           <div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-white/40">SAHELI</div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-white/40">MAITRI</div>
             <div className="text-sm font-semibold text-white">Operations</div>
           </div>
         )}

@@ -48,16 +48,18 @@ export default function CasesMap({ cases }: { cases: EmergencyCase[] }) {
       if (!c.location) return;
       
       // Marker color spec (problem statement):
+      //   broadcasted → red
       //   new        → red
+      //   assigned   → amber
       //   acknowledged → amber
       //   dispatched → amber
       //   in_progress → cyan
       //   resolved   → green
       //   escalated  → purple
       const color =
-        c.status === "new"
+        c.status === "new" || c.status === "broadcasted"
           ? "#ff3b3b"
-          : c.status === "acknowledged" || c.status === "dispatched"
+          : c.status === "assigned" || c.status === "acknowledged" || c.status === "dispatched"
           ? "#ffb020"
           : c.status === "resolved"
           ? "#22e08c"

@@ -174,7 +174,7 @@ export default function LoginForm() {
                 </div>
               </div>
 
-              <Button
+              {/* <Button
                 type="button"
                 variant="outline"
                 size="lg"
@@ -183,7 +183,7 @@ export default function LoginForm() {
                 data-testid="login-phone-otp-button"
               >
                 Continue with phone OTP
-              </Button>
+              </Button> */}
 
               <p className="pt-2 text-center text-[12px] text-white/40">
                 Police station owner?{" "}

@@ -5,23 +5,29 @@ import {
   collection,
   limit,
   onSnapshot,
- 
   query,
   where,
-
   type DocumentData,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { EmergencyCase } from "@/lib/firestore/types";
 
-const ACTIVE = ["new", "acknowledged", "dispatched", "in_progress", "escalated"];
+const ACTIVE = [
+  "broadcasted",
+  "new",
+  "assigned",
+  "acknowledged",
+  "dispatched",
+  "in_progress",
+  "escalated",
+];
 
 /**
  * Normalize a Firestore emergencyCase document so the UI can rely on a
  * canonical shape. Historic / legacy docs may have:
  *   - location: { latitude, longitude } instead of { lat, lng }
  *   - flat latitude/longitude fields
- *   - missing priority / status
+ *   - missing priority / status / nearbyStationIds (pre-broadcast era)
  */
 function normalizeCase(id: string, data: DocumentData): EmergencyCase {
   const loc =
@@ -43,11 +49,14 @@ function normalizeCase(id: string, data: DocumentData): EmergencyCase {
         : undefined,
     imageUrl: data.imageUrl || data.image_url || "",
     audioUrl: data.audioUrl || data.audio_url || "",
-    status: data.status || "new",
+    status: data.status || "broadcasted",
     priority: data.priority || "high",
-    assignedStationId: data.assignedStationId ?? undefined,
+    nearbyStationIds: data.nearbyStationIds || [],
+    assignedStationId: data.assignedStationId ?? null,
+    acceptedByStation: !!data.acceptedByStation,
     assignedOfficers: data.assignedOfficers || [],
     acceptedAt: data.acceptedAt,
+    dispatchedAt: data.dispatchedAt,
     resolvedAt: data.resolvedAt,
     notes: data.notes || [],
     createdAt: data.createdAt,
@@ -67,17 +76,18 @@ function dedupeAndSort(rows: EmergencyCase[]): EmergencyCase[] {
 }
 
 /**
- * Realtime emergency cases.
+ * Realtime emergency cases (multi-station broadcast model).
  *
- *  - `stationId`     — limit to that station + unassigned (null) cases so the
- *                      station OIC sees brand-new SOS that hasn't been routed yet
- *  - `activeOnly`    — default true; pass false to load history (all statuses)
- *  - `max`           — page size per shard (default 50)
+ *  - `stationId`     — when provided, listens to cases whose
+ *                      `nearbyStationIds` array contains that station.
+ *                      Covers BOTH still-broadcasting cases and cases the
+ *                      station has already won — once a case is locked to
+ *                      another station, the listener still receives it so
+ *                      the UI can render an "Already assigned" state.
+ *  - `activeOnly`    — default true; pass false to load full history.
+ *  - `max`           — page size (default 50).
  *
- * The hook spins up TWO snapshot listeners when a stationId is provided
- * (assigned-to-me + unassigned) and merges + dedupes them, because Firestore
- * does not support an `OR` of equality filters in a single query without
- * composite indexes on a synthetic field.
+ * For super_admin (no stationId) we listen to the whole collection.
  */
 export function useEmergencyCases(scope?: {
   stationId?: string;
@@ -88,67 +98,40 @@ export function useEmergencyCases(scope?: {
   const activeOnly = scope?.activeOnly !== false;
   const max = scope?.max ?? 50;
 
-  const [byStation, setByStation] = useState<EmergencyCase[]>([]);
-  const [unassigned, setUnassigned] = useState<EmergencyCase[]>([]);
+  const [nearby, setNearby] = useState<EmergencyCase[]>([]);
   const [global, setGlobal] = useState<EmergencyCase[] | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Listener: assigned to my station (or global when no stationId given)
   useEffect(() => {
     setLoading(true);
 
-    // IMPORTANT: We deliberately do NOT push `where("status","in",ACTIVE)` or
-    // `orderBy("createdAt","desc")` into the Firestore query. Combining
-    // `in` + equality + orderBy requires a composite index that the user
-    // would have to manually create — and if it's missing, Firestore
-    // returns an error and the listener silently shows zero results
-    // (this is exactly the "case shows briefly then disappears on refresh"
-    // bug). We filter status + sort by createdAt client-side instead.
-    // The query still scales: we cap each shard at `max` (default 50).
-
     if (stationId) {
-      // -- Listener A: cases assigned to MY station
-      const qA = query(
+      // Multi-station broadcast: array-contains is a single, indexed query
+      // that scales linearly with the size of nearbyStationIds (capped by
+      // Firestore at ~10 elements per array-contains; we expect 1–5).
+      const qN = query(
         collection(db, "emergencyCases"),
-        where("assignedStationId", "==", stationId),
+        where("nearbyStationIds", "array-contains", stationId),
         limit(max),
       );
-      const unsubA = onSnapshot(
-        qA,
+      const unsub = onSnapshot(
+        qN,
         (snap) => {
-          setByStation(snap.docs.map((d) => normalizeCase(d.id, d.data())));
+          const list = snap.docs.map((d) => normalizeCase(d.id, d.data()));
+          setNearby(list);
           setLoading(false);
+          console.log(`[useEmergencyCases] station=${stationId} → ${list.length} broadcasted case(s)`);
         },
         (err) => {
-          console.warn("[useEmergencyCases] station listener error", err);
+          console.warn("[useEmergencyCases] nearby listener error", err);
           setLoading(false);
         },
       );
-
-      // -- Listener B: brand-new / unassigned cases (null assignedStationId)
-      const qB = query(
-        collection(db, "emergencyCases"),
-        where("assignedStationId", "==", null),
-        limit(max),
-      );
-      const unsubB = onSnapshot(
-        qB,
-        (snap) => {
-          setUnassigned(snap.docs.map((d) => normalizeCase(d.id, d.data())));
-        },
-        (err) => {
-          console.warn("[useEmergencyCases] unassigned listener error", err);
-        },
-      );
-
       setGlobal(null);
-      return () => {
-        unsubA();
-        unsubB();
-      };
+      return () => unsub();
     }
 
-    // -- Global listener (super_admin, no station filter)
+    // Global (super_admin)
     const qG = query(collection(db, "emergencyCases"), limit(max));
     const unsub = onSnapshot(
       qG,
@@ -161,16 +144,15 @@ export function useEmergencyCases(scope?: {
         setLoading(false);
       },
     );
-    setByStation([]);
-    setUnassigned([]);
+    setNearby([]);
     return () => unsub();
   }, [stationId, max]);
 
   const cases = useMemo(() => {
-    const raw = !stationId ? (global ?? []) : [...byStation, ...unassigned];
+    const raw = !stationId ? (global ?? []) : nearby;
     const filtered = activeOnly ? raw.filter((c) => ACTIVE.includes(c.status)) : raw;
     return dedupeAndSort(filtered);
-  }, [stationId, byStation, unassigned, global, activeOnly]);
+  }, [stationId, nearby, global, activeOnly]);
 
   return { cases, loading };
 }
@@ -185,7 +167,6 @@ export function useSosEvents(max = 30) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // sos_events have `created_at` (ISO string) — order client-side after fetch
     const q = query(collection(db, "sos_events"), limit(max));
     const unsub = onSnapshot(
       q,

@@ -28,7 +28,7 @@ export async function POST(_req: NextRequest) {
       const u = await adminAuth.createUser({
         email,
         password,
-        displayName: "Saheli Super Admin",
+        displayName: "Maitri Super Admin",
         emailVerified: true,
       });
       uid = u.uid;
@@ -44,7 +44,7 @@ export async function POST(_req: NextRequest) {
       .set(
         {
           role: "super_admin",
-          name: "Saheli Super Admin",
+          name: "Maitri Super Admin",
           email,
           isAdmin: true,
           seededAt: new Date(),
