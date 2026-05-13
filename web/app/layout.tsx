@@ -3,9 +3,9 @@ import "./globals.css";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: "Saheli — Emergency Response Operations",
+  title: "Maitri — Emergency Response Operations",
   description:
-    "Government-grade dashboard for the Saheli women safety network. Real-time SOS, station coordination, officer dispatch.",
+    "Government-grade dashboard for the Maitri women safety network. Real-time SOS, station coordination, officer dispatch.",
   icons: { icon: "/favicon.svg" },
 };
 

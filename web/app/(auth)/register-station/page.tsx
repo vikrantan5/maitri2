@@ -206,9 +206,9 @@ export default function RegisterStationPage() {
             <Building2 className="h-3 w-3 text-cyan" />
             Police Station Registration
           </div>
-          <CardTitle>Register your station with Saheli</CardTitle>
+          <CardTitle>Register your station with Maitri</CardTitle>
           <CardDescription>
-            All requests are reviewed by Saheli operations. Approved stations receive a Station ID,
+            All requests are reviewed by Maitri operations. Approved stations receive a Station ID,
             login credentials and an officer-onboarding QR code by email.
           </CardDescription>
 
@@ -526,7 +526,7 @@ export default function RegisterStationPage() {
                 <div>
                   <h3 className="text-xl font-semibold text-white">Request received</h3>
                   <p className="mt-1 text-sm text-white/55">
-                    Your station registration has been forwarded to Saheli super-admin operations.
+                    Your station registration has been forwarded to Maitri super-admin operations.
                     On approval, the OIC will receive a login email with Station ID + temporary password.
                   </p>
                 </div>

@@ -45,7 +45,7 @@ export default function UsersPage() {
         <header className="flex items-end justify-between gap-3">
           <div>
             <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-cyan/70">Identity</div>
-            <h1 className="text-3xl font-semibold text-white">Saheli Users</h1>
+            <h1 className="text-3xl font-semibold text-white">Maitri Users</h1>
           </div>
           <div className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-white/[0.02] px-3">
             <Search className="h-3.5 w-3.5 text-white/40" />

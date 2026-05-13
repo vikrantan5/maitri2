@@ -38,3 +38,10 @@ caches/
 public/
 
 
+# Ignore backend folder
+backend/
+backend/**/*
+
+# Ignore web folder
+web/
+web/**/*

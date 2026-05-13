@@ -16,7 +16,7 @@ export default function HeatmapPage() {
           <h1 className="text-3xl font-semibold text-white">Unsafe Zone Heatmap</h1>
           <p className="mt-1 max-w-xl text-sm text-white/50">
             Aggregated from crowd-sourced safety markers. Brighter regions indicate verified unsafe
-            zones reported by Saheli users.
+            zones reported by Maitri users.
           </p>
         </header>
         <Card>

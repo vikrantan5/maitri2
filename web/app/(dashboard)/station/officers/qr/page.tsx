@@ -19,7 +19,7 @@ export default function OfficerOnboardQRPage() {
           <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-cyan/70">QR Onboarding</div>
           <h1 className="text-3xl font-semibold text-white">Print-Ready Officer QR Poster</h1>
           <p className="mt-1 max-w-xl text-sm text-white/50">
-            Officers scan this from the Saheli mobile app to register against your station. Print and post in your station premises.
+            Officers scan this from the Maitri mobile app to register against your station. Print and post in your station premises.
           </p>
         </header>
 

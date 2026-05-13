@@ -102,7 +102,7 @@ export default function SuperAdminPage() {
             <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-cyan/70">Realtime</div>
             <h1 className="text-3xl font-semibold text-white">National Operations</h1>
             <p className="mt-1 max-w-xl text-sm text-white/50">
-              Live triage across every approved station, officer, and SOS event in the Saheli network.
+              Live triage across every approved station, officer, and SOS event in the Maitri network.
             </p>
           </div>
           <div className="rounded-2xl border border-[var(--border)] bg-white/[0.03] px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-white/50">

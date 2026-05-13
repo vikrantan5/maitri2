@@ -723,12 +723,12 @@ export default function ProfileScreen() {
               }}
             />
 
-            <SettingItem
+            {/* <SettingItem
               icon={UsersRound}
               title="Meet the Team"
               subtitle="View the developers behind Maitri"
               onPress={() => router.push("/teams")}
-            />
+            /> */}
           </View>
         </View>
 

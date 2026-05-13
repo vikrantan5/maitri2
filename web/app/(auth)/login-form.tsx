@@ -77,7 +77,7 @@ export default function LoginForm() {
             <ShieldCheck className="h-3 w-3 text-cyan" />
             Secure access
           </div>
-          <CardTitle>Sign in to Saheli</CardTitle>
+          <CardTitle>Sign in to Maitri</CardTitle>
           <CardDescription>
             Authorized personnel only. All sessions are logged for audit.
           </CardDescription>
@@ -203,7 +203,7 @@ export default function LoginForm() {
       </Card>
 
       <p className="mt-6 text-center text-[11px] uppercase tracking-[0.18em] text-white/30">
-        © Saheli Operations · v0.1.0
+        © Maitri Operations · v0.1.0
       </p>
     </motion.div>
   );
