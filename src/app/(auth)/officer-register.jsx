@@ -157,46 +157,56 @@ const validate = () => {
   return Object.keys(e).length === 0;
 };
 
-  const submit = async () => {
+   const submit = async () => {
     if (!validate()) return;
     setSubmitting(true);
+    let uid = null;
     try {
       console.log('[officer-onboard] creating auth user…');
       // 1) Create Firebase Auth account for the officer
       const cred = await createUserWithEmailAndPassword(auth, form.email.trim(), form.password);
-      const uid = cred.user.uid;
+      uid = cred.user.uid;
       console.log('[officer-onboard] auth user created', uid);
 
       // IMPORTANT: Force a fresh ID token so Firestore rules see request.auth
       // before we attempt the writes below. Without this, the very first
       // Firestore write can race the SDK's auth-state propagation and fail
-      // with "Missing or insufficient permissions".
+      // with \"Missing or insufficient permissions\".
       try {
         await cred.user.getIdToken(true);
       } catch (tokErr) {
         console.warn('[officer-onboard] getIdToken(true) failed (continuing)', tokErr);
       }
 
-      // 2) Mirror minimal profile in /users so security rules can identify the user later.
-      //    `pendingOfficer: true` tells the mobile app router to send this user to the
-      //    /officer-pending screen instead of the citizen \"Complete Your Profile\" flow.
-      //    Once the station OIC approves on the web dashboard, the server-side
-      //    /api/create-officer route will set role: 'police_officer' on this doc and
-      //    the mobile app will automatically move the officer to /officer-dashboard.
+      // 2) Mirror minimal profile in /users so security rules can identify
+      //    this user later AND the root router (_layout.jsx) knows to send
+      //    them to /officer-pending instead of the citizen \"Complete Your
+      //    Profile\" flow. `pendingOfficer: true` is the discriminator.
+      //
+      //    CRITICAL: this write MUST land before we navigate away. We retry
+      //    once with exponential back-off — Firestore rules occasionally
+      //    reject the very first write because auth-state has not yet been
+      //    propagated to the rules evaluator.
       console.log('[officer-onboard] writing users/' + uid);
-      await setDoc(
-        doc(db, 'users', uid),
-        {
-          name: form.name.trim(),
-          email: form.email.trim(),
-          phone: form.phone.trim(),
-          pendingOfficer: true,
-          pendingStationId: stationId,
-          createdAt: new Date().toISOString(),
-          // role + stationId are set ONLY when station approves on web
-        },
-        { merge: true },
-      );
+      const userPayload = {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        pendingOfficer: true,
+        pendingStationId: stationId,
+        createdAt: new Date().toISOString(),
+        // role + stationId are set ONLY when station approves on web
+      };
+      try {
+        await setDoc(doc(db, 'users', uid), userPayload, { merge: true });
+      } catch (firstErr) {
+        console.warn('[officer-onboard] users write failed, retrying once', firstErr?.code);
+        await new Promise((r) => setTimeout(r, 800));
+        // Force one more token refresh before retry
+        try { await cred.user.getIdToken(true); } catch {}
+        await setDoc(doc(db, 'users', uid), userPayload, { merge: true });
+      }
+
       // 3) Submit officer onboarding request
       console.log('[officer-onboard] writing officerRequests for station', stationId);
       const ref = await addDoc(collection(db, 'officerRequests'), {
@@ -224,7 +234,11 @@ const validate = () => {
         msg = 'Password is too weak — use at least 6 characters.';
       } else if (e?.code === 'permission-denied' || /permission/i.test(String(e?.message || ''))) {
         msg =
-          'Firebase rejected the request (permission-denied). The Saheli admin must deploy the latest Firestore rules that permit /officerRequests creation by signed-in users.';
+          'Firebase rejected the request (permission-denied). The Saheli admin must deploy the latest Firestore rules from /app/firestore.rules:
+
+   firebase deploy --only firestore:rules
+
+Until then officer onboarding cannot complete.';
       }
       Alert.alert('Could not submit', msg);
     } finally {

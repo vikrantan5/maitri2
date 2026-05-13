@@ -69,11 +69,16 @@ service cloud.firestore {
     // ---------- Users ----------
     match /users/{uid} {
       allow read: if isSignedIn();
-      allow create: if isOwner(uid);
+      // A user may CREATE their own doc — but cannot self-assign privileged
+      // fields at creation time either. role/stationId/officerId/isAdmin are
+      // only written via the server-side Admin SDK in /api/create-officer
+      // & /api/create-station. (`pendingOfficer` / `pendingStationId` are
+      // intentionally NOT privileged — officer-onboarding sets them.)
+      allow create: if isOwner(uid) &&
+                       !request.resource.data.keys()
+                          .hasAny(['isAdmin','role','stationId','officerId']);
       // Users can self-edit their own doc but cannot self-assign privileged
       // fields. Admins (via direct client write) can change anything.
-      // NOTE: role/stationId for police_officer are set by the server route
-      // /api/create-officer (Admin SDK, bypasses these rules).
       allow update: if (isOwner(uid) &&
                        !request.resource.data.diff(resource.data).affectedKeys()
                           .hasAny(['isAdmin','role','stationId','officerId']))
@@ -180,9 +185,15 @@ service cloud.firestore {
 
     // Officer onboarding queue — public can submit (via mobile QR scan).
     // Station OIC of the matching stationId reads & updates these.
+    // The officer themselves may read their OWN request (by uid) so the
+    // mobile app can show pending/approved/rejected status if the user
+    // re-opens the app before approval lands.
     match /officerRequests/{requestId} {
       allow create: if true;
-      allow read, update, delete: if isAdmin() ||
+      allow read: if isAdmin() ||
+        (isStation() && resource.data.stationId == myStation()) ||
+        (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow update, delete: if isAdmin() ||
         (isStation() && resource.data.stationId == myStation());
     }
 

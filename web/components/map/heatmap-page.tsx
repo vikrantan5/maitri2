@@ -1,5 +1,5 @@
 "use client";
-
+import "leaflet/dist/leaflet.css";
 import { useEffect, useRef, useState } from "react";
 import { collection, onSnapshot, query } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -34,7 +34,7 @@ export default function HeatmapPageInner() {
 
     (async () => {
       const L = (await import("leaflet")).default;
-      await import("leaflet/dist/leaflet.css");
+ 
       await import("leaflet.heat" as any);
 
       if (!mapRef.current || cancelled) return;

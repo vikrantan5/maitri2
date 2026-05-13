@@ -1,5 +1,5 @@
 "use client";
-
+import "leaflet/dist/leaflet.css";
 import { useEffect, useRef } from "react";
 import type { EmergencyCase } from "@/lib/firestore/types";
 
@@ -14,7 +14,7 @@ export default function CasesMap({ cases }: { cases: EmergencyCase[] }) {
     let cancelled = false;
     (async () => {
       const L = (await import("leaflet")).default;
-      await import("leaflet/dist/leaflet.css");
+     
       LRef.current = L;
       if (!mapRef.current || cancelled) return;
       const m = L.map(mapRef.current, { zoomControl: true, attributionControl: false }).setView([20.5937, 78.9629], 5);
